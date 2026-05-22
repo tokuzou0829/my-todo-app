@@ -50,6 +50,13 @@
 			"when": 1779470441174,
 			"tag": "0006_talented_nextwave",
 			"breakpoints": true
+		},
+		{
+			"idx": 7,
+			"version": "7",
+			"when": 1779471939808,
+			"tag": "0007_secret_raider",
+			"breakpoints": true
 		}
 	]
 }

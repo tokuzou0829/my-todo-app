@@ -2,21 +2,67 @@ import { describe, expect, it } from "vitest";
 import { setup } from "@/tests/vitest.helper";
 import app from "./subscriptions";
 
-const { createUser } = await setup();
+const { createUser, mock } = await setup();
 
 describe("/routes/subscriptions", () => {
-	it("未ログイン時はAPIに到達できない", async () => {
+	it("未ログイン時は最初のユーザーの公開用データを取得できる", async () => {
+		await createUser();
+		const publicCreateResponse = await app.request("/", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				name: "Public Storage",
+				amountMinor: 500,
+				currency: "JPY",
+				billingIntervalUnit: "month",
+				billingIntervalCount: 1,
+				nextPaymentAt: "2026-02-01T00:00:00.000Z",
+				memo: "visible memo",
+			}),
+		});
+		const privateCreateResponse = await app.request("/", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				name: "Private Storage",
+				amountMinor: 1500,
+				currency: "JPY",
+				billingIntervalUnit: "month",
+				billingIntervalCount: 1,
+				nextPaymentAt: "2026-02-02T00:00:00.000Z",
+				memo: "private memo",
+				isPrivate: true,
+			}),
+		});
+		expect(publicCreateResponse.status).toBe(201);
+		expect(privateCreateResponse.status).toBe(201);
+
+		mock.authMiddleware.mockImplementation(async (c, next) => {
+			c.set("user", null);
+			c.set("session", null);
+			await next();
+		});
+
 		const response = await app.request("/", {
 			method: "GET",
 		});
 		const json = await response.json();
 
-		expect(json).toMatchInlineSnapshot(`
-			{
-			  "error": "Unauthorized",
-			}
-		`);
-		expect(response.status).toBe(401);
+		expect(response.status).toBe(200);
+		expect(json.owner).toMatchObject({ name: "Test User" });
+		expect(json.isReadOnly).toBe(true);
+		expect(json.subscriptions).toHaveLength(2);
+		expect(json.subscriptions[0]).toMatchObject({
+			name: "Public Storage",
+			memo: "visible memo",
+			isPrivate: false,
+		});
+		expect(json.subscriptions[1]).toMatchObject({
+			name: "非公開のサブスクリプション",
+			memo: null,
+			amountMinor: 1500,
+			isPrivate: true,
+		});
 	});
 
 	it("ログイン時はサブスクリプションを管理できる", async () => {
@@ -111,5 +157,30 @@ describe("/routes/subscriptions", () => {
 		});
 
 		expect(deleteResponse.status).toBe(200);
+	});
+
+	it("30日ごとの支払い周期を登録できる", async () => {
+		await createUser();
+
+		const response = await app.request("/", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				name: "Fixed Cycle",
+				amountMinor: 1000,
+				currency: "JPY",
+				billingIntervalUnit: "day",
+				billingIntervalCount: 30,
+				nextPaymentAt: "2026-01-01T00:00:00.000Z",
+			}),
+		});
+		const json = await response.json();
+
+		expect(response.status).toBe(201);
+		expect(json.subscription).toMatchObject({
+			name: "Fixed Cycle",
+			billingIntervalUnit: "day",
+			billingIntervalCount: 30,
+		});
 	});
 });

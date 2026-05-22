@@ -132,6 +132,7 @@ export const todo = pgTable(
 		title: text("title").notNull(),
 		priority: text("priority").default("none").notNull(),
 		dueAt: timestamp("due_at"),
+		isPrivate: boolean("is_private").default(false).notNull(),
 		completed: boolean("completed").default(false).notNull(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
@@ -158,6 +159,7 @@ export const subscription = pgTable(
 			.notNull(),
 		nextPaymentAt: timestamp("next_payment_at").notNull(),
 		memo: text("memo"),
+		isPrivate: boolean("is_private").default(false).notNull(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
 			.defaultNow()

@@ -79,7 +79,13 @@ const setStoredSidebarState = (isOpen: boolean) => {
 	window.dispatchEvent(new Event(SIDEBAR_STATE_CHANGE_EVENT));
 };
 
-export function SiteHeader() {
+export function SiteHeader({
+	showLoginButton = true,
+	showSignupButton = true,
+}: {
+	showLoginButton?: boolean;
+	showSignupButton?: boolean;
+}) {
 	const { data: session, isPending } = authClient.useSession();
 	const pathname = usePathname();
 	const isOpen = useSyncExternalStore(
@@ -89,9 +95,22 @@ export function SiteHeader() {
 	);
 	const userInitial =
 		session?.user?.name?.charAt(0) ?? session?.user?.email?.charAt(0) ?? "?";
+	const shouldShowAccountPanel = Boolean(
+		session?.user || (!isPending && showLoginButton),
+	);
 	const visibleNavItems = session?.user
 		? navItems.slice(0, 2)
-		: [navItems[0], ...navItems.slice(2)];
+		: navItems.filter((item) => {
+				if (item.href === "/login") {
+					return showLoginButton;
+				}
+
+				if (item.href === "/signup") {
+					return showSignupButton;
+				}
+
+				return true;
+			});
 
 	const closeOnMobile = () => {
 		if (window.matchMedia("(max-width: 767px)").matches) {
@@ -196,62 +215,55 @@ export function SiteHeader() {
 					})}
 				</nav>
 
-				<div className="mt-auto border-t border-border pt-3">
-					{isPending ? (
-						<div
-							className={cn(
-								"text-sm text-muted-foreground",
-								isOpen ? "px-3 py-2" : "text-center",
-							)}
-						>
-							{isOpen ? "Loading..." : "..."}
-						</div>
-					) : session?.user ? (
-						<div className="space-y-3">
-							<div
-								className={cn(
-									"flex items-center gap-3 rounded-2xl",
-									isOpen ? "px-3 py-2" : "justify-center p-2",
-								)}
-							>
-								<div className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-muted text-sm font-semibold uppercase">
-									{userInitial}
+				{shouldShowAccountPanel ? (
+					<div className="mt-auto border-t border-border pt-3">
+						{session?.user ? (
+							<div className="space-y-3">
+								<div
+									className={cn(
+										"flex items-center gap-3 rounded-2xl",
+										isOpen ? "px-3 py-2" : "justify-center p-2",
+									)}
+								>
+									<div className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-muted text-sm font-semibold uppercase">
+										{userInitial}
+									</div>
+									<div className={cn("min-w-0", !isOpen && "sr-only")}>
+										<p className="truncate text-sm font-semibold text-foreground">
+											{session.user.name ?? "Unnamed"}
+										</p>
+										<p className="truncate text-xs text-muted-foreground">
+											{session.user.email}
+										</p>
+									</div>
 								</div>
-								<div className={cn("min-w-0", !isOpen && "sr-only")}>
-									<p className="truncate text-sm font-semibold text-foreground">
-										{session.user.name ?? "Unnamed"}
-									</p>
-									<p className="truncate text-xs text-muted-foreground">
-										{session.user.email}
-									</p>
-								</div>
+								<Button
+									variant="ghost"
+									className={cn("w-full", isOpen ? "justify-start" : "px-0")}
+									onClick={() => {
+										void signOut();
+									}}
+								>
+									<LogOut className="size-4" />
+									<span className={cn(!isOpen && "sr-only")}>ログアウト</span>
+								</Button>
 							</div>
-							<Button
-								variant="ghost"
-								className={cn("w-full", isOpen ? "justify-start" : "px-0")}
-								onClick={() => {
-									void signOut();
-								}}
-							>
-								<LogOut className="size-4" />
-								<span className={cn(!isOpen && "sr-only")}>ログアウト</span>
-							</Button>
-						</div>
-					) : (
-						<div className={cn("space-y-2", !isOpen && "hidden")}>
-							<p className="px-3 text-xs text-muted-foreground">
-								アカウント未接続
-							</p>
-							<Link
-								href="/login"
-								className="flex items-center justify-center rounded-xl border border-border px-3 py-2 text-sm font-semibold transition hover:bg-muted"
-								onClick={closeOnMobile}
-							>
-								ログイン
-							</Link>
-						</div>
-					)}
-				</div>
+						) : showLoginButton ? (
+							<div className={cn("space-y-2", !isOpen && "hidden")}>
+								<p className="px-3 text-xs text-muted-foreground">
+									アカウント未接続
+								</p>
+								<Link
+									href="/login"
+									className="flex items-center justify-center rounded-xl border border-border px-3 py-2 text-sm font-semibold transition hover:bg-muted"
+									onClick={closeOnMobile}
+								>
+									ログイン
+								</Link>
+							</div>
+						) : null}
+					</div>
+				) : null}
 			</aside>
 		</>
 	);

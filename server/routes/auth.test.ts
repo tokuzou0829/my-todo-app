@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlobFile, FileId, UploadedFile } from "@/server/objects/file";
 import { setup } from "@/tests/vitest.helper";
 import app from "./auth";
@@ -9,6 +9,30 @@ const { saveBlobFile } = vi.hoisted(() => ({
 }));
 
 describe("/routes/auth", () => {
+	afterEach(() => {
+		delete process.env.AUTH_SIGNUP_ENDPOINT_ENABLED;
+	});
+
+	describe("POST /sign-up/email", () => {
+		it("登録エンドポイントが無効なときは登録できない", async () => {
+			process.env.AUTH_SIGNUP_ENDPOINT_ENABLED = "false";
+
+			const response = await app.request("/sign-up/email", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					name: "Blocked User",
+					email: "blocked@example.com",
+					password: "password1234",
+				}),
+			});
+			const json = await response.json();
+
+			expect(response.status).toBe(403);
+			expect(json).toMatchObject({ error: "Signup is disabled" });
+		});
+	});
+
 	describe("POST /secure-message", () => {
 		beforeEach(async () => {
 			vi.mock("../infrastructure/repositories/file", async (actual) => {

@@ -8,6 +8,10 @@ import * as schema from "@/db/schema";
 import type { Database } from "@/lib/db";
 import { createHonoApp } from "@/server/create-app";
 import { getUserOrThrow } from "@/server/middleware/auth";
+import {
+	getReadableDataOwner,
+	toPublicDataOwner,
+} from "@/server/routes/public-data-owner";
 
 const labelColors = [
 	"lime",
@@ -21,7 +25,7 @@ type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 type DbClient = Database | Transaction;
 
 const currencySchema = z.literal("JPY");
-const billingIntervalUnitSchema = z.enum(["week", "month", "year"]);
+const billingIntervalUnitSchema = z.enum(["day", "week", "month", "year"]);
 const labelColorSchema = z.enum(labelColors);
 const nextPaymentAtSchema = z
 	.string()
@@ -46,6 +50,7 @@ const createSubscriptionSchema = z.object({
 	billingIntervalCount: z.number().int().min(1).max(60),
 	nextPaymentAt: nextPaymentAtSchema,
 	memo: memoSchema.default(null),
+	isPrivate: z.boolean().default(false),
 	labelIds: z.array(z.string().uuid()).max(50).default([]),
 	newLabels: z.array(newLabelSchema).max(20).default([]),
 });
@@ -62,11 +67,27 @@ const subscriptionIdSchema = z.object({
 
 const app = createHonoApp()
 	.get("/", async (c) => {
-		const { user } = await getUserOrThrow(c);
-		const db = c.get("db");
-		const result = await getSubscriptionsWithLabels(db, user.id);
+		const { user, isReadOnly } = await getReadableDataOwner(c);
 
-		return c.json(result);
+		if (!user) {
+			return c.json({
+				subscriptions: [],
+				labels: [],
+				owner: null,
+				isReadOnly,
+			});
+		}
+
+		const db = c.get("db");
+		const result = await getSubscriptionsWithLabels(db, user.id, {
+			maskPrivateDetails: isReadOnly,
+		});
+
+		return c.json({
+			...result,
+			owner: toPublicDataOwner(user),
+			isReadOnly,
+		});
 	})
 	.post("/", zValidator("json", createSubscriptionSchema), async (c) => {
 		const { user } = await getUserOrThrow(c);
@@ -182,7 +203,11 @@ const app = createHonoApp()
 		return c.json({ subscription });
 	});
 
-async function getSubscriptionsWithLabels(db: DbClient, userId: string) {
+async function getSubscriptionsWithLabels(
+	db: DbClient,
+	userId: string,
+	options: { maskPrivateDetails?: boolean } = {},
+) {
 	const subscriptions = await db
 		.select()
 		.from(schema.subscription)
@@ -220,9 +245,17 @@ async function getSubscriptionsWithLabels(db: DbClient, userId: string) {
 			const assignedLabelIds = new Set(
 				labelIdsBySubscriptionId.get(subscription.id) ?? [],
 			);
+			const displaySubscription =
+				options.maskPrivateDetails && subscription.isPrivate
+					? {
+							...subscription,
+							name: "非公開のサブスクリプション",
+							memo: null,
+						}
+					: subscription;
 
 			return {
-				...subscription,
+				...displaySubscription,
 				labels: labels.filter((label) => assignedLabelIds.has(label.id)),
 			};
 		}),

@@ -5,6 +5,7 @@ import { type FormEvent, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -33,6 +34,7 @@ type Todo = {
 	title: string;
 	priority: TodoPriority;
 	dueAt: string | null;
+	isPrivate: boolean;
 	completed: boolean;
 	createdAt: string;
 	updatedAt: string;
@@ -44,6 +46,8 @@ type TodoResponse = {
 
 type TodosResponse = {
 	todos: Todo[];
+	owner: { id: string; name: string } | null;
+	isReadOnly: boolean;
 };
 
 const priorityOptions: Array<{ value: TodoPriority; label: string }> = [
@@ -67,9 +71,10 @@ const priorityRank: Record<TodoPriority, number> = {
 	none: 3,
 };
 
-export function TodoApp() {
+export function TodoApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const [todos, setTodos] = useState<Todo[]>([]);
 	const [title, setTitle] = useState("");
+	const [isPrivate, setIsPrivate] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isCreating, setIsCreating] = useState(false);
@@ -77,7 +82,9 @@ export function TodoApp() {
 	const [draftPriority, setDraftPriority] = useState<TodoPriority>("none");
 	const [draftDueDate, setDraftDueDate] = useState("");
 	const [draftDueTime, setDraftDueTime] = useState("");
+	const [draftIsPrivate, setDraftIsPrivate] = useState(false);
 	const [isSavingOptions, setIsSavingOptions] = useState(false);
+	const [ownerName, setOwnerName] = useState<string | null>(null);
 	const [now, setNow] = useState(() => Date.now());
 
 	useEffect(() => {
@@ -108,6 +115,7 @@ export function TodoApp() {
 			const body = (await response.json()) as TodosResponse;
 			if (!ignore) {
 				setTodos(sortTodos(body.todos));
+				setOwnerName(body.owner?.name ?? null);
 				setIsLoading(false);
 			}
 		};
@@ -132,6 +140,7 @@ export function TodoApp() {
 		const response = await apiClient.api.todos.$post({
 			json: {
 				title: trimmedTitle,
+				isPrivate,
 			},
 		});
 
@@ -144,6 +153,7 @@ export function TodoApp() {
 		const body = (await response.json()) as TodoResponse;
 		setTodos((current) => sortTodos([body.todo, ...current]));
 		setTitle("");
+		setIsPrivate(false);
 		setIsCreating(false);
 	};
 
@@ -199,6 +209,7 @@ export function TodoApp() {
 		setDraftPriority(todo.priority);
 		setDraftDueDate(dueAtParts.date);
 		setDraftDueTime(dueAtParts.time);
+		setDraftIsPrivate(todo.isPrivate);
 	};
 
 	const closeOptions = () => {
@@ -221,6 +232,7 @@ export function TodoApp() {
 			json: {
 				priority: draftPriority,
 				dueAt,
+				isPrivate: draftIsPrivate,
 			},
 		});
 
@@ -258,6 +270,9 @@ export function TodoApp() {
 							Todo List
 						</h2>
 						<p className="text-muted-foreground text-sm">
+							{ownerName && isReadOnly
+								? `${ownerName} さんの公開 Todo / `
+								: null}
 							{todos.length} 件中 {completedCount} 件完了
 						</p>
 					</div>
@@ -273,21 +288,38 @@ export function TodoApp() {
 					</div>
 				</div>
 
-				<form
-					onSubmit={handleCreate}
-					className="flex flex-col gap-3 sm:flex-row"
-				>
-					<Input
-						value={title}
-						onChange={(event) => setTitle(event.target.value)}
-						placeholder="例: 週次レビューをする"
-						aria-label="Todo title"
-						className="bg-background"
-					/>
-					<Button type="submit" disabled={isCreating || !title.trim()}>
-						{isCreating ? "追加中..." : "追加"}
-					</Button>
-				</form>
+				{isReadOnly ? null : (
+					<form onSubmit={handleCreate} className="space-y-3">
+						<div className="flex flex-col gap-3 sm:flex-row">
+							<Input
+								value={title}
+								onChange={(event) => setTitle(event.target.value)}
+								placeholder="例: 週次レビューをする"
+								aria-label="Todo title"
+								className="bg-background"
+							/>
+							<Button type="submit" disabled={isCreating || !title.trim()}>
+								{isCreating ? "追加中..." : "追加"}
+							</Button>
+						</div>
+						<div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
+							<Checkbox
+								id="todo-private"
+								checked={isPrivate}
+								onCheckedChange={(checked) => setIsPrivate(checked === true)}
+								className="mt-0.5"
+							/>
+							<Label htmlFor="todo-private" className="block font-normal">
+								<span className="block font-medium text-foreground">
+									非公開にする
+								</span>
+								<span className="block text-muted-foreground text-xs">
+									未ログインの公開表示と API から除外されます。
+								</span>
+							</Label>
+						</div>
+					</form>
+				)}
 
 				{error ? (
 					<p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700 text-sm">
@@ -313,15 +345,17 @@ export function TodoApp() {
 											"border-l-destructive bg-destructive/5 hover:bg-destructive/10 focus-within:bg-destructive/10",
 									)}
 								>
-									<button
-										type="button"
-										className="absolute inset-0 z-10 cursor-pointer focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-										onClick={() => {
-											void toggleTodo(todo);
-										}}
-										aria-pressed={todo.completed}
-										aria-label={`${todo.title} を${todo.completed ? "未完了に戻す" : "完了にする"}`}
-									/>
+									{isReadOnly ? null : (
+										<button
+											type="button"
+											className="absolute inset-0 z-10 cursor-pointer focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+											onClick={() => {
+												void toggleTodo(todo);
+											}}
+											aria-pressed={todo.completed}
+											aria-label={`${todo.title} を${todo.completed ? "未完了に戻す" : "完了にする"}`}
+										/>
+									)}
 									<span
 										aria-hidden="true"
 										className={cn(
@@ -343,6 +377,9 @@ export function TodoApp() {
 											{todo.title}
 										</span>
 										<div className="mt-2 flex flex-wrap items-center gap-2">
+											{todo.isPrivate ? (
+												<Badge variant="secondary">非公開</Badge>
+											) : null}
 											<PriorityBadge priority={todo.priority} />
 											{todo.dueAt ? (
 												<Badge
@@ -360,30 +397,34 @@ export function TodoApp() {
 											) : null}
 										</div>
 									</div>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="relative z-30 text-muted-foreground hover:text-foreground"
-										onClick={(event) => {
-											event.stopPropagation();
-											openOptions(todo);
-										}}
-										aria-label={`${todo.title} のオプションを開く`}
-									>
-										<Pencil className="size-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="relative z-30 text-muted-foreground hover:text-destructive"
-										onClick={(event) => {
-											event.stopPropagation();
-											void deleteTodo(todo);
-										}}
-										aria-label={`${todo.title} を削除する`}
-									>
-										<Trash2 className="size-4" />
-									</Button>
+									{isReadOnly ? null : (
+										<>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="relative z-30 text-muted-foreground hover:text-foreground"
+												onClick={(event) => {
+													event.stopPropagation();
+													openOptions(todo);
+												}}
+												aria-label={`${todo.title} のオプションを開く`}
+											>
+												<Pencil className="size-4" />
+											</Button>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="relative z-30 text-muted-foreground hover:text-destructive"
+												onClick={(event) => {
+													event.stopPropagation();
+													void deleteTodo(todo);
+												}}
+												aria-label={`${todo.title} を削除する`}
+											>
+												<Trash2 className="size-4" />
+											</Button>
+										</>
+									)}
 								</li>
 							);
 						})}
@@ -394,7 +435,9 @@ export function TodoApp() {
 							まだ Todo はありません
 						</p>
 						<p className="mt-1 text-muted-foreground text-sm">
-							最初のタスクを追加して始めましょう。
+							{isReadOnly
+								? "公開されている Todo はありません。"
+								: "最初のタスクを追加して始めましょう。"}
 						</p>
 					</div>
 				)}
@@ -436,6 +479,29 @@ export function TodoApp() {
 									))}
 								</SelectContent>
 							</Select>
+						</div>
+						<div className="grid gap-2">
+							<div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
+								<Checkbox
+									id="todo-options-private"
+									checked={draftIsPrivate}
+									onCheckedChange={(checked) =>
+										setDraftIsPrivate(checked === true)
+									}
+									className="mt-0.5"
+								/>
+								<Label
+									htmlFor="todo-options-private"
+									className="block font-normal"
+								>
+									<span className="block font-medium text-foreground">
+										非公開にする
+									</span>
+									<span className="block text-muted-foreground text-xs">
+										未ログインの公開表示と API から除外されます。
+									</span>
+								</Label>
+							</div>
 						</div>
 						<div className="grid gap-2">
 							<div className="flex items-center justify-between gap-3">

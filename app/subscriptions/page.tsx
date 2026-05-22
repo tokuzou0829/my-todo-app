@@ -1,5 +1,4 @@
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 
 import { SubscriptionApp } from "@/components/subscription-app";
 import { auth } from "@/lib/auth";
@@ -9,9 +8,5 @@ export default async function SubscriptionsPage() {
 		headers: await headers(),
 	});
 
-	if (!session) {
-		redirect("/login");
-	}
-
-	return <SubscriptionApp />;
+	return <SubscriptionApp isReadOnly={!session} />;
 }

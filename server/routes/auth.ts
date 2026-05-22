@@ -1,6 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { isSignupEndpointEnabled } from "@/lib/auth-settings";
 import { createSecureMessageWrokflow } from "@/server/applications/usecases/secure-message";
 import { createHonoApp } from "@/server/create-app";
 import { getUserOrThrow } from "@/server/middleware/auth";
@@ -38,6 +40,15 @@ const app = createHonoApp()
 		},
 	)
 	.get("/hello", (c) => c.text("Hello, World!"))
+	.post("/sign-up/email", (c) => {
+		if (!isSignupEndpointEnabled()) {
+			throw new HTTPException(403, {
+				message: "Signup is disabled",
+			});
+		}
+
+		return auth.handler(c.req.raw);
+	})
 	.on(["GET", "POST"], "/*", (c) => auth.handler(c.req.raw));
 
 export default app;

@@ -7,9 +7,14 @@ import { z } from "zod";
 import * as schema from "@/db/schema";
 import { createHonoApp } from "@/server/create-app";
 import { getUserOrThrow } from "@/server/middleware/auth";
+import {
+	getReadableDataOwner,
+	toPublicDataOwner,
+} from "@/server/routes/public-data-owner";
 
 const createTodoSchema = z.object({
 	title: z.string().trim().min(1).max(120),
+	isPrivate: z.boolean().default(false),
 });
 
 const todoPrioritySchema = z.enum(["none", "low", "medium", "high"]);
@@ -26,13 +31,15 @@ const updateTodoSchema = z
 		completed: z.boolean().optional(),
 		priority: todoPrioritySchema.optional(),
 		dueAt: todoDueAtSchema.optional(),
+		isPrivate: z.boolean().optional(),
 	})
 	.refine(
 		(value) =>
 			value.title !== undefined ||
 			value.completed !== undefined ||
 			value.priority !== undefined ||
-			value.dueAt !== undefined,
+			value.dueAt !== undefined ||
+			value.isPrivate !== undefined,
 		{
 			message: "No changes provided",
 		},
@@ -44,23 +51,33 @@ const todoIdSchema = z.object({
 
 const app = createHonoApp()
 	.get("/", async (c) => {
-		const { user } = await getUserOrThrow(c);
+		const { user, isReadOnly } = await getReadableDataOwner(c);
+
+		if (!user) {
+			return c.json({ todos: [], owner: null, isReadOnly });
+		}
+
+		const filters = [eq(schema.todo.userId, user.id)];
+		if (isReadOnly) {
+			filters.push(eq(schema.todo.isPrivate, false));
+		}
+
 		const todos = await c
 			.get("db")
 			.select()
 			.from(schema.todo)
-			.where(eq(schema.todo.userId, user.id))
+			.where(and(...filters))
 			.orderBy(
 				sql`case ${schema.todo.priority} when 'high' then 0 when 'medium' then 1 when 'low' then 2 else 3 end`,
 				asc(schema.todo.dueAt),
 				desc(schema.todo.createdAt),
 			);
 
-		return c.json({ todos });
+		return c.json({ todos, owner: toPublicDataOwner(user), isReadOnly });
 	})
 	.post("/", zValidator("json", createTodoSchema), async (c) => {
 		const { user } = await getUserOrThrow(c);
-		const { title } = c.req.valid("json");
+		const { title, isPrivate } = c.req.valid("json");
 		const [todo] = await c
 			.get("db")
 			.insert(schema.todo)
@@ -68,6 +85,7 @@ const app = createHonoApp()
 				id: uuidv7(),
 				userId: user.id,
 				title,
+				isPrivate,
 			})
 			.returning();
 

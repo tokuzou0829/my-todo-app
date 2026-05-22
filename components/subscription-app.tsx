@@ -11,6 +11,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -29,10 +30,14 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { apiClient } from "@/lib/api-client";
+import {
+	type BillingIntervalUnit,
+	getCalculatedNextPaymentAt,
+	getPaymentsPerYear,
+} from "@/lib/subscription-billing";
 import { cn } from "@/lib/utils";
 
 type Currency = "JPY";
-type BillingIntervalUnit = "week" | "month" | "year";
 type LabelColor = "lime" | "blue" | "violet" | "rose" | "amber" | "slate";
 
 type SubscriptionLabel = {
@@ -61,6 +66,7 @@ type Subscription = {
 	billingIntervalCount: number;
 	nextPaymentAt: string;
 	memo: string | null;
+	isPrivate: boolean;
 	labels: SubscriptionLabel[];
 	createdAt: string;
 	updatedAt: string;
@@ -74,6 +80,7 @@ type SubscriptionPayload = {
 	billingIntervalCount: number;
 	nextPaymentAt: string;
 	memo: string | null;
+	isPrivate: boolean;
 	labelIds: string[];
 	newLabels: NewLabel[];
 };
@@ -85,6 +92,8 @@ type SubscriptionResponse = {
 type SubscriptionsResponse = {
 	subscriptions: Subscription[];
 	labels: SubscriptionLabel[];
+	owner: { id: string; name: string } | null;
+	isReadOnly: boolean;
 };
 
 type SubscriptionFormState = {
@@ -95,6 +104,7 @@ type SubscriptionFormState = {
 	billingIntervalCount: string;
 	nextPaymentDate: string;
 	memo: string;
+	isPrivate: boolean;
 	labelIds: string[];
 	newLabels: NewLabel[];
 };
@@ -114,6 +124,7 @@ const billingIntervalUnitOptions: Array<{
 	value: BillingIntervalUnit;
 	label: string;
 }> = [
+	{ value: "day", label: "日" },
 	{ value: "week", label: "週" },
 	{ value: "month", label: "月" },
 	{ value: "year", label: "年" },
@@ -154,11 +165,16 @@ const emptyForm: SubscriptionFormState = {
 	billingIntervalCount: "1",
 	nextPaymentDate: "",
 	memo: "",
+	isPrivate: false,
 	labelIds: [],
 	newLabels: [],
 };
 
-export function SubscriptionApp() {
+export function SubscriptionApp({
+	isReadOnly = false,
+}: {
+	isReadOnly?: boolean;
+}) {
 	const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
 	const [labels, setLabels] = useState<SubscriptionLabel[]>([]);
 	const [form, setForm] = useState<SubscriptionFormState>(emptyForm);
@@ -177,6 +193,7 @@ export function SubscriptionApp() {
 	const [isLoading, setIsLoading] = useState(true);
 	const [isCreating, setIsCreating] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [ownerName, setOwnerName] = useState<string | null>(null);
 
 	useEffect(() => {
 		let ignore = false;
@@ -202,6 +219,7 @@ export function SubscriptionApp() {
 			if (!ignore) {
 				setSubscriptions(sortSubscriptions(body.subscriptions));
 				setLabels(sortLabels(body.labels));
+				setOwnerName(body.owner?.name ?? null);
 				setIsLoading(false);
 			}
 		};
@@ -380,9 +398,8 @@ export function SubscriptionApp() {
 		}
 	};
 
-	const filteredSubscriptions = filterSubscriptionsByLabels(
-		subscriptions,
-		selectedFilterLabelIds,
+	const filteredSubscriptions = sortSubscriptions(
+		filterSubscriptionsByLabels(subscriptions, selectedFilterLabelIds),
 	);
 	const summary = summarizeSubscriptions(filteredSubscriptions);
 
@@ -395,7 +412,9 @@ export function SubscriptionApp() {
 							サブスクリプション
 						</h2>
 						<p className="text-muted-foreground text-sm">
-							登録している継続課金の支払い予定と年間コストを確認します。
+							{ownerName && isReadOnly
+								? `${ownerName} さんの公開サブスクリプションを表示しています。`
+								: "登録している継続課金の支払い予定と年間コストを確認します。"}
 						</p>
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
@@ -406,10 +425,12 @@ export function SubscriptionApp() {
 							<CreditCard className="size-3" />
 							JPY 固定
 						</Badge>
-						<Button onClick={openCreate}>
-							<Plus className="size-4" />
-							追加
-						</Button>
+						{isReadOnly ? null : (
+							<Button onClick={openCreate}>
+								<Plus className="size-4" />
+								追加
+							</Button>
+						)}
 					</div>
 				</div>
 
@@ -432,7 +453,10 @@ export function SubscriptionApp() {
 							label="次回支払い"
 							value={
 								summary.nextSubscription
-									? formatDate(summary.nextSubscription.nextPaymentAt)
+									? formatDate(
+											getCalculatedNextPaymentAt(summary.nextSubscription) ??
+												summary.nextSubscription.nextPaymentAt,
+										)
 									: "未登録"
 							}
 							description={summary.nextSubscription?.name ?? "予定はありません"}
@@ -522,8 +546,12 @@ export function SubscriptionApp() {
 								<SubscriptionRow
 									key={subscription.id}
 									subscription={subscription}
-									onEdit={openEdit}
-									onDelete={(item) => void deleteSubscription(item)}
+									onEdit={isReadOnly ? undefined : openEdit}
+									onDelete={
+										isReadOnly
+											? undefined
+											: (item) => void deleteSubscription(item)
+									}
 								/>
 							))}
 						</div>
@@ -543,7 +571,9 @@ export function SubscriptionApp() {
 							まだサブスクリプションはありません
 						</p>
 						<p className="mt-1 text-muted-foreground text-sm">
-							継続課金を追加して、月額と年間コストを見える化しましょう。
+							{isReadOnly
+								? "公開されているサブスクリプションはありません。"
+								: "継続課金を追加して、月額と年間コストを見える化しましょう。"}
 						</p>
 					</div>
 				)}
@@ -715,12 +745,15 @@ function SubscriptionRow({
 	onDelete,
 }: {
 	subscription: Subscription;
-	onEdit: (subscription: Subscription) => void;
-	onDelete: (subscription: Subscription) => void;
+	onEdit?: (subscription: Subscription) => void;
+	onDelete?: (subscription: Subscription) => void;
 }) {
 	const annualAmount = getAnnualAmount(subscription);
 	const monthlyAmount = annualAmount / 12;
-	const isDueSoon = isWithinDays(subscription.nextPaymentAt, 7);
+	const calculatedNextPaymentAt = getCalculatedNextPaymentAt(subscription);
+	const displayNextPaymentAt =
+		calculatedNextPaymentAt ?? subscription.nextPaymentAt;
+	const isDueSoon = isWithinDays(displayNextPaymentAt, 7);
 
 	return (
 		<div
@@ -734,9 +767,12 @@ function SubscriptionRow({
 					{subscription.name}
 				</p>
 				<div className="flex flex-wrap items-center gap-2">
+					{subscription.isPrivate ? (
+						<Badge variant="secondary">非公開</Badge>
+					) : null}
 					<Badge variant={isDueSoon ? "default" : "outline"}>
 						<CalendarClock className="size-3" />
-						{formatDate(subscription.nextPaymentAt)}
+						{formatDate(displayNextPaymentAt)}
 					</Badge>
 					<Badge variant="secondary">
 						{formatBillingInterval(subscription)}
@@ -749,26 +785,28 @@ function SubscriptionRow({
 					<p className="text-muted-foreground text-sm">{subscription.memo}</p>
 				) : null}
 			</div>
-			<div className="flex items-start gap-1 sm:justify-end">
-				<Button
-					variant="ghost"
-					size="icon"
-					className="text-muted-foreground hover:text-foreground"
-					onClick={() => onEdit(subscription)}
-					aria-label={`${subscription.name} を編集する`}
-				>
-					<Pencil className="size-4" />
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon"
-					className="text-muted-foreground hover:text-destructive"
-					onClick={() => onDelete(subscription)}
-					aria-label={`${subscription.name} を削除する`}
-				>
-					<Trash2 className="size-4" />
-				</Button>
-			</div>
+			{onEdit && onDelete ? (
+				<div className="flex items-start gap-1 sm:justify-end">
+					<Button
+						variant="ghost"
+						size="icon"
+						className="text-muted-foreground hover:text-foreground"
+						onClick={() => onEdit(subscription)}
+						aria-label={`${subscription.name} を編集する`}
+					>
+						<Pencil className="size-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="text-muted-foreground hover:text-destructive"
+						onClick={() => onDelete(subscription)}
+						aria-label={`${subscription.name} を削除する`}
+					>
+						<Trash2 className="size-4" />
+					</Button>
+				</div>
+			) : null}
 			<dl className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
 				<DetailItem
 					label="次回支払い"
@@ -822,8 +860,36 @@ function SubscriptionFields({
 	onOpenNewLabel: () => void;
 	idPrefix: string;
 }) {
+	const previewNextPaymentAt = getCalculatedNextPaymentAtFromForm(form);
+
 	return (
 		<div className="space-y-4">
+			<div className="grid gap-2">
+				<div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
+					<Checkbox
+						id={`${idPrefix}-subscription-private`}
+						checked={form.isPrivate}
+						onCheckedChange={(checked) =>
+							setForm((current) => ({
+								...current,
+								isPrivate: checked === true,
+							}))
+						}
+						className="mt-0.5"
+					/>
+					<Label
+						htmlFor={`${idPrefix}-subscription-private`}
+						className="block font-normal"
+					>
+						<span className="block font-medium text-foreground">
+							非公開にする
+						</span>
+						<span className="block text-muted-foreground text-xs">
+							未ログインの公開表示ではタイトルとメモを伏せます。
+						</span>
+					</Label>
+				</div>
+			</div>
 			<div className="grid gap-2">
 				<Label htmlFor={`${idPrefix}-subscription-name`}>サービス名</Label>
 				<Input
@@ -853,7 +919,7 @@ function SubscriptionFields({
 				</div>
 				<div className="grid gap-2">
 					<Label htmlFor={`${idPrefix}-subscription-next-payment`}>
-						次回支払い日
+						基準支払い日
 					</Label>
 					<Input
 						id={`${idPrefix}-subscription-next-payment`}
@@ -866,6 +932,9 @@ function SubscriptionFields({
 							}))
 						}
 					/>
+					<p className="text-muted-foreground text-xs">
+						この日付を基準に、今日以降の次回支払い日を自動計算します。
+					</p>
 				</div>
 			</div>
 			<div className="grid gap-2">
@@ -906,6 +975,15 @@ function SubscriptionFields({
 					</Select>
 				</div>
 			</div>
+			{previewNextPaymentAt ? (
+				<p className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-muted-foreground text-sm">
+					この設定で表示される次回支払い日は
+					<span className="font-medium text-foreground">
+						{formatDate(previewNextPaymentAt)}
+					</span>
+					です。
+				</p>
+			) : null}
 			<div className="grid gap-2">
 				<Label htmlFor={`${idPrefix}-subscription-memo`}>メモ</Label>
 				<Input
@@ -995,7 +1073,12 @@ function SubscriptionFields({
 function summarizeSubscriptions(subscriptions: Subscription[]) {
 	const now = new Date();
 	const thisMonthTotal = subscriptions.reduce((total, subscription) => {
-		return isSameMonth(subscription.nextPaymentAt, now)
+		const calculatedNextPaymentAt = getCalculatedNextPaymentAt(
+			subscription,
+			now,
+		);
+
+		return calculatedNextPaymentAt && isSameMonth(calculatedNextPaymentAt, now)
 			? total + subscription.amountMinor
 			: total;
 	}, 0);
@@ -1074,6 +1157,7 @@ function toPayload(form: SubscriptionFormState): SubscriptionPayload | null {
 		billingIntervalCount,
 		nextPaymentAt,
 		memo: form.memo.trim() || null,
+		isPrivate: form.isPrivate,
 		labelIds: form.labelIds,
 		newLabels: form.newLabels,
 	};
@@ -1088,6 +1172,7 @@ function toFormState(subscription: Subscription): SubscriptionFormState {
 		billingIntervalCount: String(subscription.billingIntervalCount),
 		nextPaymentDate: toDateInputValue(subscription.nextPaymentAt),
 		memo: subscription.memo ?? "",
+		isPrivate: subscription.isPrivate,
 		labelIds: subscription.labels.map((label) => label.id),
 		newLabels: [],
 	};
@@ -1126,18 +1211,6 @@ function getAnnualAmount(subscription: Subscription) {
 	return subscription.amountMinor * paymentsPerYear;
 }
 
-function getPaymentsPerYear(unit: BillingIntervalUnit, count: number) {
-	if (unit === "week") {
-		return 52 / count;
-	}
-
-	if (unit === "month") {
-		return 12 / count;
-	}
-
-	return 1 / count;
-}
-
 function formatBillingInterval(subscription: Subscription) {
 	const option = billingIntervalUnitOptions.find(
 		(item) => item.value === subscription.billingIntervalUnit,
@@ -1153,15 +1226,35 @@ function formatBillingInterval(subscription: Subscription) {
 
 function sortSubscriptions(subscriptions: Subscription[]) {
 	return [...subscriptions].sort((left, right) => {
+		const leftNextPaymentAt =
+			getCalculatedNextPaymentAt(left) ?? new Date(left.nextPaymentAt);
+		const rightNextPaymentAt =
+			getCalculatedNextPaymentAt(right) ?? new Date(right.nextPaymentAt);
 		const nextPaymentDiff =
-			new Date(left.nextPaymentAt).getTime() -
-			new Date(right.nextPaymentAt).getTime();
+			leftNextPaymentAt.getTime() - rightNextPaymentAt.getTime();
 
 		if (nextPaymentDiff !== 0) {
 			return nextPaymentDiff;
 		}
 
 		return left.name.localeCompare(right.name, "ja");
+	});
+}
+
+function getCalculatedNextPaymentAtFromForm(form: SubscriptionFormState) {
+	const billingIntervalCount = Number.parseInt(form.billingIntervalCount, 10);
+	const anchorDate = form.nextPaymentDate
+		? new Date(`${form.nextPaymentDate}T00:00:00`)
+		: null;
+
+	if (!anchorDate) {
+		return null;
+	}
+
+	return getCalculatedNextPaymentAt({
+		nextPaymentAt: anchorDate,
+		billingIntervalUnit: form.billingIntervalUnit,
+		billingIntervalCount,
 	});
 }
 
@@ -1190,7 +1283,7 @@ function toDateInputValue(value: string) {
 	return localDate.toISOString().slice(0, 10);
 }
 
-function formatDate(value: string) {
+function formatDate(value: string | Date) {
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) {
 		return "日付未設定";
@@ -1219,7 +1312,7 @@ function formatMoney(amountMinor: number, currency: Currency) {
 	}).format(amountMinor / 10 ** minorUnit);
 }
 
-function isSameMonth(value: string, baseDate: Date) {
+function isSameMonth(value: string | Date, baseDate: Date) {
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) {
 		return false;
@@ -1231,7 +1324,7 @@ function isSameMonth(value: string, baseDate: Date) {
 	);
 }
 
-function isWithinDays(value: string, days: number) {
+function isWithinDays(value: string | Date, days: number) {
 	const date = new Date(value).getTime();
 	if (Number.isNaN(date)) {
 		return false;

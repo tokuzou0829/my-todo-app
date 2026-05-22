@@ -1,6 +1,11 @@
 import { loadEnvConfig } from "@next/env";
 import { z } from "zod";
 
+const booleanString = z
+	.enum(["true", "false"])
+	.default("true")
+	.transform((value) => value === "true");
+
 const staticEnv = z.object({
 	NODE_ENV: z
 		.union([
@@ -13,6 +18,9 @@ const staticEnv = z.object({
 	//better-auth
 	BETTER_AUTH_URL: z.url(),
 	BETTER_AUTH_SECRET: z.string().min(1),
+	AUTH_SHOW_LOGIN_BUTTON: booleanString,
+	AUTH_SHOW_SIGNUP_BUTTON: booleanString,
+	AUTH_SIGNUP_ENDPOINT_ENABLED: booleanString,
 
 	// for server
 	DATABASE_URL: z.url(),

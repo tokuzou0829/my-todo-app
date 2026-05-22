@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { SiteHeader } from "@/components/site-header";
+import {
+	shouldShowLoginButton,
+	shouldShowSignupButton,
+} from "@/lib/auth-settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,7 +33,10 @@ export default function RootLayout({
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
 			>
-				<SiteHeader />
+				<SiteHeader
+					showLoginButton={shouldShowLoginButton()}
+					showSignupButton={shouldShowSignupButton()}
+				/>
 				<main className="w-full px-6 pb-10 pt-24 transition-[padding] duration-300 ease-out md:pl-24 md:pr-10 md:pt-10">
 					<div className="mx-auto w-full max-w-6xl">{children}</div>
 				</main>
