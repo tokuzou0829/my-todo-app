@@ -3,7 +3,7 @@ import type { BlobFile, FileId, UploadedFile } from "@/server/objects/file";
 import { setup } from "@/tests/vitest.helper";
 import app from "./auth";
 
-const { mock, createUser, db } = await setup();
+const { createUser } = await setup();
 const { saveBlobFile } = vi.hoisted(() => ({
 	saveBlobFile: vi.fn(),
 }));

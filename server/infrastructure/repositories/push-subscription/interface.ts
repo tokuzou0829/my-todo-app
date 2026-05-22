@@ -19,10 +19,6 @@ export type FindSubscriptionsByUserIdService = (
 	userId: string,
 ) => Promise<PushSubscriptionRecord[]>;
 
-export type FindAllSubscriptionsService = () => Promise<
-	PushSubscriptionRecord[]
->;
-
 export type DeleteSubscriptionByEndpointAndUserIdService = (params: {
 	userId: string;
 	endpoint: string;

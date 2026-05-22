@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { signUpWithEmail } from "@/lib/auth-actions";
 
 export default function SignupPage() {
@@ -36,73 +46,63 @@ export default function SignupPage() {
 
 	return (
 		<div className="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center">
-			<div className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-				<h1 className="text-2xl font-semibold text-zinc-900">Create account</h1>
-				<p className="mt-2 text-sm text-zinc-500">
-					Sign up to access the secure API playground.
-				</p>
-				<form onSubmit={handleSubmit} className="mt-6 space-y-4">
-					<div className="flex flex-col gap-2">
-						<label className="text-sm font-medium text-zinc-700" htmlFor="name">
-							Name
-						</label>
-						<input
-							id="name"
-							required
-							value={name}
-							onChange={(event) => setName(event.target.value)}
-							className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-400"
-						/>
+			<Card>
+				<CardHeader>
+					<div className="mb-3 size-10 rounded-2xl bg-primary/15 p-2">
+						<div className="size-full rounded-xl bg-primary" />
 					</div>
-					<div className="flex flex-col gap-2">
-						<label
-							className="text-sm font-medium text-zinc-700"
-							htmlFor="email"
+					<CardTitle>新規登録</CardTitle>
+					<CardDescription>
+						Todo を自分だけのリストとして保存するためのアカウントを作成します。
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<form onSubmit={handleSubmit} className="mt-6 space-y-4">
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="name">Name</Label>
+							<Input
+								id="name"
+								required
+								value={name}
+								onChange={(event) => setName(event.target.value)}
+							/>
+						</div>
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="email">Email</Label>
+							<Input
+								id="email"
+								type="email"
+								required
+								value={email}
+								onChange={(event) => setEmail(event.target.value)}
+							/>
+						</div>
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="password">Password</Label>
+							<Input
+								id="password"
+								type="password"
+								required
+								value={password}
+								onChange={(event) => setPassword(event.target.value)}
+							/>
+						</div>
+						<Button type="submit" disabled={isLoading} className="w-full">
+							{isLoading ? "作成中..." : "アカウントを作成"}
+						</Button>
+					</form>
+					{error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
+					<p className="mt-6 text-sm text-muted-foreground">
+						すでにアカウントがありますか?{" "}
+						<Link
+							href="/login"
+							className="font-semibold text-primary-foreground underline decoration-primary decoration-2 underline-offset-4"
 						>
-							Email
-						</label>
-						<input
-							id="email"
-							type="email"
-							required
-							value={email}
-							onChange={(event) => setEmail(event.target.value)}
-							className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-400"
-						/>
-					</div>
-					<div className="flex flex-col gap-2">
-						<label
-							className="text-sm font-medium text-zinc-700"
-							htmlFor="password"
-						>
-							Password
-						</label>
-						<input
-							id="password"
-							type="password"
-							required
-							value={password}
-							onChange={(event) => setPassword(event.target.value)}
-							className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-900 outline-none transition focus:border-zinc-400"
-						/>
-					</div>
-					<button
-						type="submit"
-						disabled={isLoading}
-						className="w-full rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
-					>
-						{isLoading ? "Creating account..." : "Create account"}
-					</button>
-				</form>
-				{error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
-				<p className="mt-6 text-sm text-zinc-500">
-					Already have an account?{" "}
-					<Link href="/login" className="font-medium text-zinc-900">
-						Log in
-					</Link>
-					.
-				</p>
-			</div>
+							ログイン
+						</Link>
+					</p>
+				</CardContent>
+			</Card>
 		</div>
 	);
 }

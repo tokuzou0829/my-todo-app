@@ -1,6 +1,4 @@
 import { uuidv7 } from "uuidv7";
-import { z } from "zod";
-import { ValidationError } from "@/server/errors";
 
 export const createBlobFile = (params: {
 	blob: Blob;
@@ -24,18 +22,7 @@ const generateFileId = (): FileId => {
 	return uuidv7() as FileId;
 };
 
-const fileIdSchema = z.string().uuid().brand("FileId");
-
-export type FileId = z.infer<typeof fileIdSchema>;
-export type FileIdInput = z.input<typeof fileIdSchema>;
-
-const FileId = Object.assign(
-	(input: FileIdInput): FileId => buildFromZod(fileIdSchema.safeParse(input)),
-	{
-		schema: fileIdSchema,
-		unsafe: (input: FileIdInput): FileId => fileIdSchema.parse(input),
-	},
-);
+export type FileId = string & { readonly __brand: "FileId" };
 
 export interface BlobFile extends BaseFile {
 	kind: "BlobFile";
@@ -48,21 +35,6 @@ export interface BaseFile {
 	key: string;
 	contentType: string;
 }
-
-/**
- * Zod の SafeParseReturnType を neverthrow の Result に変換する
- *
- * @example
- * ```ts
- * const result = buildFromZod(OrderQuantity.safeBuild(newValue));
- * // Result<OrderQuantity, ValidationError>
- * ```
- */
-
-const buildFromZod = <Output>(result: z.ZodSafeParseResult<Output>): Output => {
-	if (result.success) return result.data;
-	throw new ValidationError(result.error.message);
-};
 
 export type UploadedFile<T extends BaseFile> = T & {
 	size: number;

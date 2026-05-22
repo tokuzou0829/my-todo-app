@@ -5,7 +5,6 @@ import type { Database } from "@/lib/db";
 import type {
 	DeleteSubscriptionByEndpointAndUserIdService,
 	DeleteSubscriptionByIdService,
-	FindAllSubscriptionsService,
 	FindSubscriptionByEndpointAndUserIdService,
 	FindSubscriptionsByUserIdService,
 	SavePushSubscriptionService,
@@ -16,7 +15,6 @@ export const createPushSubscriptionRepository = (db: Database) => ({
 	findSubscriptionByEndpointAndUserId:
 		createFindSubscriptionByEndpointAndUserId(db),
 	findSubscriptionsByUserId: createFindSubscriptionsByUserId(db),
-	findAllSubscriptions: createFindAllSubscriptions(db),
 	deleteSubscriptionByEndpointAndUserId:
 		createDeleteSubscriptionByEndpointAndUserId(db),
 	deleteSubscriptionById: createDeleteSubscriptionById(db),
@@ -84,14 +82,6 @@ const createFindSubscriptionsByUserId = (
 			.select()
 			.from(schema.pushSubscription)
 			.where(eq(schema.pushSubscription.userId, userId));
-	};
-};
-
-const createFindAllSubscriptions = (
-	db: Database,
-): FindAllSubscriptionsService => {
-	return async () => {
-		return db.select().from(schema.pushSubscription);
 	};
 };
 

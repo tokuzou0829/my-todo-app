@@ -120,10 +120,31 @@ export const pushSubscription = pgTable(
 	],
 );
 
+export const todo = pgTable(
+	"todo",
+	{
+		id: text("id").primaryKey().notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		priority: text("priority").default("none").notNull(),
+		dueAt: timestamp("due_at"),
+		completed: boolean("completed").default(false).notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [index("todo_userId_idx").on(table.userId)],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
 	sessions: many(session),
 	accounts: many(account),
 	pushSubscriptions: many(pushSubscription),
+	todos: many(todo),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -149,3 +170,10 @@ export const pushSubscriptionRelations = relations(
 		}),
 	}),
 );
+
+export const todoRelations = relations(todo, ({ one }) => ({
+	user: one(user, {
+		fields: [todo.userId],
+		references: [user.id],
+	}),
+}));

@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "Next Tokuzou Kit",
-	description: "Next.js + Hono + Better Auth demo",
+	title: "Todo App",
+	description: "A simple authenticated todo app",
 };
 
 export default function RootLayout({
@@ -25,12 +25,14 @@ export default function RootLayout({
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang="en">
+		<html lang="ja">
 			<body
-				className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-zinc-50 text-zinc-900 antialiased`}
+				className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
 			>
 				<SiteHeader />
-				<main className="mx-auto w-full max-w-5xl px-6 py-10">{children}</main>
+				<main className="w-full px-6 pb-10 pt-24 transition-[padding] duration-300 ease-out md:pl-24 md:pr-10 md:pt-10">
+					<div className="mx-auto w-full max-w-6xl">{children}</div>
+				</main>
 			</body>
 		</html>
 	);

@@ -14,6 +14,7 @@ export async function signInWithEmail(params: {
 	const { error } = await authClient.signIn.email({
 		email: params.email,
 		password: params.password,
+		rememberMe: true,
 	});
 
 	if (error) {
