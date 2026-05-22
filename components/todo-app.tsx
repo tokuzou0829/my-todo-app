@@ -78,6 +78,15 @@ export function TodoApp() {
 	const [draftDueDate, setDraftDueDate] = useState("");
 	const [draftDueTime, setDraftDueTime] = useState("");
 	const [isSavingOptions, setIsSavingOptions] = useState(false);
+	const [now, setNow] = useState(() => Date.now());
+
+	useEffect(() => {
+		const intervalId = window.setInterval(() => {
+			setNow(Date.now());
+		}, 60_000);
+
+		return () => window.clearInterval(intervalId);
+	}, []);
 
 	useEffect(() => {
 		let ignore = false;
@@ -292,78 +301,92 @@ export function TodoApp() {
 					</p>
 				) : todos.length ? (
 					<ul className="divide-y divide-border border-border border-y">
-						{todos.map((todo) => (
-							<li
-								key={todo.id}
-								className="relative flex items-center gap-3 px-4 py-4 transition hover:bg-accent focus-within:bg-accent"
-							>
-								<button
-									type="button"
-									className="absolute inset-0 z-10 cursor-pointer focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-									onClick={() => {
-										void toggleTodo(todo);
-									}}
-									aria-pressed={todo.completed}
-									aria-label={`${todo.title} を${todo.completed ? "未完了に戻す" : "完了にする"}`}
-								/>
-								<span
-									aria-hidden="true"
+						{todos.map((todo) => {
+							const isOverdue = isTodoOverdue(todo, now);
+
+							return (
+								<li
+									key={todo.id}
 									className={cn(
-										"pointer-events-none relative z-20 flex size-5 shrink-0 items-center justify-center rounded-[4px] border border-input shadow-xs",
-										todo.completed &&
-											"border-primary bg-primary text-primary-foreground",
+										"relative flex items-center gap-3 border-l-2 border-l-transparent px-4 py-4 transition hover:bg-accent focus-within:bg-accent",
+										isOverdue &&
+											"border-l-destructive bg-destructive/5 hover:bg-destructive/10 focus-within:bg-destructive/10",
 									)}
 								>
-									{todo.completed ? <Check className="size-4" /> : null}
-								</span>
-								<div className="pointer-events-none relative z-20 min-w-0 flex-1">
+									<button
+										type="button"
+										className="absolute inset-0 z-10 cursor-pointer focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+										onClick={() => {
+											void toggleTodo(todo);
+										}}
+										aria-pressed={todo.completed}
+										aria-label={`${todo.title} を${todo.completed ? "未完了に戻す" : "完了にする"}`}
+									/>
 									<span
+										aria-hidden="true"
 										className={cn(
-											"block truncate font-medium text-foreground text-sm",
-											todo.completed && "text-muted-foreground line-through",
+											"pointer-events-none relative z-20 flex size-5 shrink-0 items-center justify-center rounded-[4px] border border-input shadow-xs",
+											todo.completed &&
+												"border-primary bg-primary text-primary-foreground",
 										)}
 									>
-										{todo.title}
+										{todo.completed ? <Check className="size-4" /> : null}
 									</span>
-									<div className="mt-2 flex flex-wrap items-center gap-2">
-										<PriorityBadge priority={todo.priority} />
-										{todo.dueAt ? (
-											<Badge
-												variant="outline"
-												className="gap-1 text-muted-foreground"
-											>
-												<CalendarClock className="size-3" />
-												{formatDueAt(todo.dueAt)}
-											</Badge>
-										) : null}
+									<div className="pointer-events-none relative z-20 min-w-0 flex-1">
+										<span
+											className={cn(
+												"block truncate font-medium text-foreground text-sm",
+												isOverdue && "text-destructive",
+												todo.completed && "text-muted-foreground line-through",
+											)}
+										>
+											{todo.title}
+										</span>
+										<div className="mt-2 flex flex-wrap items-center gap-2">
+											<PriorityBadge priority={todo.priority} />
+											{todo.dueAt ? (
+												<Badge
+													variant="outline"
+													className={cn(
+														"gap-1 text-muted-foreground",
+														isOverdue &&
+															"border-destructive/40 bg-destructive/10 text-destructive",
+													)}
+												>
+													<CalendarClock className="size-3" />
+													{isOverdue ? "期限切れ: " : null}
+													{formatDueAt(todo.dueAt)}
+												</Badge>
+											) : null}
+										</div>
 									</div>
-								</div>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="relative z-30 text-muted-foreground hover:text-foreground"
-									onClick={(event) => {
-										event.stopPropagation();
-										openOptions(todo);
-									}}
-									aria-label={`${todo.title} のオプションを開く`}
-								>
-									<Pencil className="size-4" />
-								</Button>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="relative z-30 text-muted-foreground hover:text-destructive"
-									onClick={(event) => {
-										event.stopPropagation();
-										void deleteTodo(todo);
-									}}
-									aria-label={`${todo.title} を削除する`}
-								>
-									<Trash2 className="size-4" />
-								</Button>
-							</li>
-						))}
+									<Button
+										variant="ghost"
+										size="icon"
+										className="relative z-30 text-muted-foreground hover:text-foreground"
+										onClick={(event) => {
+											event.stopPropagation();
+											openOptions(todo);
+										}}
+										aria-label={`${todo.title} のオプションを開く`}
+									>
+										<Pencil className="size-4" />
+									</Button>
+									<Button
+										variant="ghost"
+										size="icon"
+										className="relative z-30 text-muted-foreground hover:text-destructive"
+										onClick={(event) => {
+											event.stopPropagation();
+											void deleteTodo(todo);
+										}}
+										aria-label={`${todo.title} を削除する`}
+									>
+										<Trash2 className="size-4" />
+									</Button>
+								</li>
+							);
+						})}
 					</ul>
 				) : (
 					<div className="rounded-2xl border border-primary/40 border-dashed bg-primary/5 px-4 py-10 text-center">
@@ -513,6 +536,15 @@ function PriorityBadge({ priority }: { priority: TodoPriority }) {
 			{priorityLabels[priority]}
 		</Badge>
 	);
+}
+
+function isTodoOverdue(todo: Todo, now: number) {
+	if (todo.completed || !todo.dueAt) {
+		return false;
+	}
+
+	const dueAt = new Date(todo.dueAt).getTime();
+	return !Number.isNaN(dueAt) && dueAt < now;
 }
 
 function sortTodos(todos: Todo[]) {

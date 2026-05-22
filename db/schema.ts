@@ -3,7 +3,9 @@ import {
 	bigint,
 	boolean,
 	index,
+	integer,
 	pgTable,
+	primaryKey,
 	text,
 	timestamp,
 	uniqueIndex,
@@ -140,11 +142,79 @@ export const todo = pgTable(
 	(table) => [index("todo_userId_idx").on(table.userId)],
 );
 
+export const subscription = pgTable(
+	"subscription",
+	{
+		id: text("id").primaryKey().notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+		currency: text("currency").default("JPY").notNull(),
+		billingIntervalUnit: text("billing_interval_unit").notNull(),
+		billingIntervalCount: integer("billing_interval_count")
+			.default(1)
+			.notNull(),
+		nextPaymentAt: timestamp("next_payment_at").notNull(),
+		memo: text("memo"),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [index("subscription_userId_idx").on(table.userId)],
+);
+
+export const subscriptionLabel = pgTable(
+	"subscription_label",
+	{
+		id: text("id").primaryKey().notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		color: text("color").notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [
+		index("subscription_label_userId_idx").on(table.userId),
+		uniqueIndex("subscription_label_userId_name_idx").on(
+			table.userId,
+			table.name,
+		),
+	],
+);
+
+export const subscriptionLabelAssignment = pgTable(
+	"subscription_label_assignment",
+	{
+		subscriptionId: text("subscription_id")
+			.notNull()
+			.references(() => subscription.id, { onDelete: "cascade" }),
+		labelId: text("label_id")
+			.notNull()
+			.references(() => subscriptionLabel.id, { onDelete: "cascade" }),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.subscriptionId, table.labelId] }),
+		index("subscription_label_assignment_labelId_idx").on(table.labelId),
+	],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
 	sessions: many(session),
 	accounts: many(account),
 	pushSubscriptions: many(pushSubscription),
 	todos: many(todo),
+	subscriptions: many(subscription),
+	subscriptionLabels: many(subscriptionLabel),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -177,3 +247,39 @@ export const todoRelations = relations(todo, ({ one }) => ({
 		references: [user.id],
 	}),
 }));
+
+export const subscriptionRelations = relations(
+	subscription,
+	({ many, one }) => ({
+		user: one(user, {
+			fields: [subscription.userId],
+			references: [user.id],
+		}),
+		labelAssignments: many(subscriptionLabelAssignment),
+	}),
+);
+
+export const subscriptionLabelRelations = relations(
+	subscriptionLabel,
+	({ many, one }) => ({
+		user: one(user, {
+			fields: [subscriptionLabel.userId],
+			references: [user.id],
+		}),
+		assignments: many(subscriptionLabelAssignment),
+	}),
+);
+
+export const subscriptionLabelAssignmentRelations = relations(
+	subscriptionLabelAssignment,
+	({ one }) => ({
+		subscription: one(subscription, {
+			fields: [subscriptionLabelAssignment.subscriptionId],
+			references: [subscription.id],
+		}),
+		label: one(subscriptionLabel, {
+			fields: [subscriptionLabelAssignment.labelId],
+			references: [subscriptionLabel.id],
+		}),
+	}),
+);

@@ -1,9 +1,17 @@
 "use client";
 
-import { CheckSquare2, LogIn, LogOut, Menu, UserPlus, X } from "lucide-react";
+import {
+	CheckSquare2,
+	CreditCard,
+	LogIn,
+	LogOut,
+	Menu,
+	UserPlus,
+	X,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui/button";
 import { signOut } from "@/lib/auth-actions";
@@ -17,6 +25,11 @@ const navItems = [
 		icon: CheckSquare2,
 	},
 	{
+		href: "/subscriptions",
+		label: "サブスクリプション",
+		icon: CreditCard,
+	},
+	{
 		href: "/login",
 		label: "ログイン",
 		icon: LogIn,
@@ -28,16 +41,61 @@ const navItems = [
 	},
 ];
 
+const SIDEBAR_STATE_STORAGE_KEY = "todo-app-sidebar-open";
+const SIDEBAR_STATE_CHANGE_EVENT = "todo-app-sidebar-state-change";
+
+const getStoredSidebarState = () => {
+	if (typeof window === "undefined") {
+		return true;
+	}
+
+	return window.localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY) !== "false";
+};
+
+const getServerSidebarState = () => true;
+
+const subscribeToSidebarState = (onStoreChange: () => void) => {
+	const handleStorageChange = (event: StorageEvent) => {
+		if (event.key === SIDEBAR_STATE_STORAGE_KEY) {
+			onStoreChange();
+		}
+	};
+	const handleSidebarStateChange = () => onStoreChange();
+
+	window.addEventListener("storage", handleStorageChange);
+	window.addEventListener(SIDEBAR_STATE_CHANGE_EVENT, handleSidebarStateChange);
+
+	return () => {
+		window.removeEventListener("storage", handleStorageChange);
+		window.removeEventListener(
+			SIDEBAR_STATE_CHANGE_EVENT,
+			handleSidebarStateChange,
+		);
+	};
+};
+
+const setStoredSidebarState = (isOpen: boolean) => {
+	window.localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, String(isOpen));
+	window.dispatchEvent(new Event(SIDEBAR_STATE_CHANGE_EVENT));
+};
+
 export function SiteHeader() {
 	const { data: session, isPending } = authClient.useSession();
 	const pathname = usePathname();
-	const [isOpen, setIsOpen] = useState(false);
+	const isOpen = useSyncExternalStore(
+		subscribeToSidebarState,
+		getStoredSidebarState,
+		getServerSidebarState,
+	);
 	const userInitial =
 		session?.user?.name?.charAt(0) ?? session?.user?.email?.charAt(0) ?? "?";
-	const visibleNavItems = session?.user ? navItems.slice(0, 1) : navItems;
+	const visibleNavItems = session?.user
+		? navItems.slice(0, 2)
+		: [navItems[0], ...navItems.slice(2)];
+
 	const closeOnMobile = () => {
 		if (window.matchMedia("(max-width: 767px)").matches) {
-			setIsOpen(false);
+			setStoredSidebarState(false);
 		}
 	};
 
@@ -48,7 +106,7 @@ export function SiteHeader() {
 					type="button"
 					aria-label="サイドバーを閉じる"
 					className="fixed inset-0 z-30 bg-background/70 backdrop-blur-sm md:hidden"
-					onClick={() => setIsOpen(false)}
+					onClick={() => setStoredSidebarState(false)}
 				/>
 			) : null}
 
@@ -60,7 +118,7 @@ export function SiteHeader() {
 					"fixed left-4 top-4 z-50 inline-flex size-12 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm transition md:hidden",
 					isOpen && "opacity-0 pointer-events-none",
 				)}
-				onClick={() => setIsOpen(true)}
+				onClick={() => setStoredSidebarState(true)}
 			>
 				<Menu className="size-5" />
 			</button>
@@ -105,7 +163,7 @@ export function SiteHeader() {
 							"grid size-10 shrink-0 place-items-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground",
 							!isOpen && "hidden md:grid",
 						)}
-						onClick={() => setIsOpen((current) => !current)}
+						onClick={() => setStoredSidebarState(!isOpen)}
 					>
 						{isOpen ? <X className="size-5" /> : <Menu className="size-5" />}
 					</button>
