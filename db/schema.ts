@@ -122,6 +122,26 @@ export const pushSubscription = pgTable(
 	],
 );
 
+export const apiKey = pgTable(
+	"api_key",
+	{
+		id: text("id").primaryKey().notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		keyHash: text("key_hash").notNull(),
+		keyPrefix: text("key_prefix").notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		lastUsedAt: timestamp("last_used_at"),
+		revokedAt: timestamp("revoked_at"),
+	},
+	(table) => [
+		index("api_key_userId_idx").on(table.userId),
+		uniqueIndex("api_key_keyHash_idx").on(table.keyHash),
+	],
+);
+
 export const todo = pgTable(
 	"todo",
 	{
@@ -214,6 +234,7 @@ export const userRelations = relations(user, ({ many }) => ({
 	sessions: many(session),
 	accounts: many(account),
 	pushSubscriptions: many(pushSubscription),
+	apiKeys: many(apiKey),
 	todos: many(todo),
 	subscriptions: many(subscription),
 	subscriptionLabels: many(subscriptionLabel),
@@ -242,6 +263,13 @@ export const pushSubscriptionRelations = relations(
 		}),
 	}),
 );
+
+export const apiKeyRelations = relations(apiKey, ({ one }) => ({
+	user: one(user, {
+		fields: [apiKey.userId],
+		references: [user.id],
+	}),
+}));
 
 export const todoRelations = relations(todo, ({ one }) => ({
 	user: one(user, {

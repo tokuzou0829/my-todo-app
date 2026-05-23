@@ -42,7 +42,7 @@ const newLabelSchema = z.object({
 	color: labelColorSchema,
 });
 
-const createSubscriptionSchema = z.object({
+export const createSubscriptionSchema = z.object({
 	name: z.string().trim().min(1).max(120),
 	amountMinor: z.number().int().min(0).max(999_999_999_999),
 	currency: currencySchema.default("JPY"),
@@ -55,7 +55,7 @@ const createSubscriptionSchema = z.object({
 	newLabels: z.array(newLabelSchema).max(20).default([]),
 });
 
-const updateSubscriptionSchema = createSubscriptionSchema
+export const updateSubscriptionSchema = createSubscriptionSchema
 	.partial()
 	.refine((value) => Object.keys(value).length > 0, {
 		message: "No changes provided",
@@ -203,7 +203,7 @@ const app = createHonoApp()
 		return c.json({ subscription });
 	});
 
-async function getSubscriptionsWithLabels(
+export async function getSubscriptionsWithLabels(
 	db: DbClient,
 	userId: string,
 	options: { maskPrivateDetails?: boolean } = {},
@@ -263,7 +263,7 @@ async function getSubscriptionsWithLabels(
 	};
 }
 
-async function getSubscriptionWithLabels(
+export async function getSubscriptionWithLabels(
 	db: DbClient,
 	userId: string,
 	subscriptionId: string,
@@ -288,7 +288,7 @@ async function getUserLabels(db: DbClient, userId: string) {
 		.orderBy(asc(schema.subscriptionLabel.name));
 }
 
-async function resolveLabelIds(
+export async function resolveLabelIds(
 	db: DbClient,
 	userId: string,
 	input: {
@@ -356,7 +356,7 @@ async function resolveLabelIds(
 	);
 }
 
-async function replaceSubscriptionLabels(
+export async function replaceSubscriptionLabels(
 	db: DbClient,
 	subscriptionId: string,
 	labelIds: string[],

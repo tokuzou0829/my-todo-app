@@ -57,6 +57,13 @@
 			"when": 1779471939808,
 			"tag": "0007_secret_raider",
 			"breakpoints": true
+		},
+		{
+			"idx": 8,
+			"version": "7",
+			"when": 1779538170933,
+			"tag": "0008_violet_speed",
+			"breakpoints": true
 		}
 	]
 }

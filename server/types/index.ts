@@ -9,6 +9,8 @@ export type HonoEnv = {
 	Variables: {
 		user: typeof auth.$Infer.Session.user | null;
 		session: typeof auth.$Infer.Session.session | null;
+		apiKeyUser: typeof auth.$Infer.Session.user | null;
+		apiKeyId: string | null;
 		r2: {
 			client: AwsClient;
 			baseUrl: string;

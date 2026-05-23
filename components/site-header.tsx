@@ -3,6 +3,7 @@
 import {
 	CheckSquare2,
 	CreditCard,
+	KeyRound,
 	LogIn,
 	LogOut,
 	Menu,
@@ -13,7 +14,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
-import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { signOut } from "@/lib/auth-actions";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -218,36 +226,61 @@ export function SiteHeader({
 				{shouldShowAccountPanel ? (
 					<div className="mt-auto border-t border-border pt-3">
 						{session?.user ? (
-							<div className="space-y-3">
-								<div
-									className={cn(
-										"flex items-center gap-3 rounded-2xl",
-										isOpen ? "px-3 py-2" : "justify-center p-2",
-									)}
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<button
+										type="button"
+										className={cn(
+											"flex w-full items-center gap-3 rounded-2xl text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+											isOpen ? "px-3 py-2" : "justify-center p-2",
+										)}
+									>
+										<div className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-muted text-sm font-semibold uppercase">
+											{userInitial}
+										</div>
+										<div className={cn("min-w-0", !isOpen && "sr-only")}>
+											<p className="truncate text-sm font-semibold text-foreground">
+												{session.user.name ?? "Unnamed"}
+											</p>
+											<p className="truncate text-xs text-muted-foreground">
+												{session.user.email}
+											</p>
+										</div>
+									</button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent
+									align={isOpen ? "start" : "center"}
+									side="top"
+									sideOffset={8}
+									className="w-64"
 								>
-									<div className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-muted text-sm font-semibold uppercase">
-										{userInitial}
-									</div>
-									<div className={cn("min-w-0", !isOpen && "sr-only")}>
-										<p className="truncate text-sm font-semibold text-foreground">
-											{session.user.name ?? "Unnamed"}
-										</p>
-										<p className="truncate text-xs text-muted-foreground">
+									<DropdownMenuLabel className="min-w-0">
+										<p className="truncate">{session.user.name ?? "Unnamed"}</p>
+										<p className="truncate font-normal text-muted-foreground text-xs">
 											{session.user.email}
 										</p>
-									</div>
-								</div>
-								<Button
-									variant="ghost"
-									className={cn("w-full", isOpen ? "justify-start" : "px-0")}
-									onClick={() => {
-										void signOut();
-									}}
-								>
-									<LogOut className="size-4" />
-									<span className={cn(!isOpen && "sr-only")}>ログアウト</span>
-								</Button>
-							</div>
+									</DropdownMenuLabel>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem asChild>
+										<Link href="/developer/api-keys" onClick={closeOnMobile}>
+											<KeyRound className="size-4" />
+											開発者向け
+										</Link>
+									</DropdownMenuItem>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem
+										variant="destructive"
+										onSelect={(event) => {
+											event.preventDefault();
+											closeOnMobile();
+											void signOut();
+										}}
+									>
+										<LogOut className="size-4" />
+										ログアウト
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
 						) : showLoginButton ? (
 							<div className={cn("space-y-2", !isOpen && "hidden")}>
 								<p className="px-3 text-xs text-muted-foreground">
