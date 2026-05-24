@@ -1,10 +1,14 @@
 import type { MetadataRoute } from "next";
 
+import { getSiteSettings } from "@/lib/site-settings";
+
 export default function manifest(): MetadataRoute.Manifest {
+	const siteSettings = getSiteSettings();
+
 	return {
-		name: "NextTokuzouKit PWA",
-		short_name: "TokuzouKit!",
-		description: "NextJSを使用して構築されたフルスタック実装キット",
+		name: siteSettings.name,
+		short_name: siteSettings.manifestShortName,
+		description: siteSettings.description,
 		start_url: "/",
 		display: "standalone",
 		background_color: "#ffffff",

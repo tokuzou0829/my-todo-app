@@ -6,6 +6,7 @@ import {
 	shouldShowLoginButton,
 	shouldShowSignupButton,
 } from "@/lib/auth-settings";
+import { getSiteSettings } from "@/lib/site-settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,9 +19,11 @@ const geistMono = Geist_Mono({
 	subsets: ["latin"],
 });
 
+const siteSettings = getSiteSettings();
+
 export const metadata: Metadata = {
-	title: "Todo App",
-	description: "A simple authenticated todo app",
+	title: siteSettings.name,
+	description: siteSettings.description,
 };
 
 export default function RootLayout({
@@ -34,6 +37,8 @@ export default function RootLayout({
 				className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
 			>
 				<SiteHeader
+					siteName={siteSettings.name}
+					siteHeaderIcon={siteSettings.headerIcon}
 					showLoginButton={shouldShowLoginButton()}
 					showSignupButton={shouldShowSignupButton()}
 				/>

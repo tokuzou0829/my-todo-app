@@ -22,6 +22,15 @@ const staticEnv = z.object({
 	AUTH_SHOW_SIGNUP_BUTTON: booleanString,
 	AUTH_SIGNUP_ENDPOINT_ENABLED: booleanString,
 
+	//site
+	SITE_NAME: z.string().min(1).default("Todo App"),
+	SITE_DESCRIPTION: z
+		.string()
+		.min(1)
+		.default("A simple authenticated todo app"),
+	SITE_HEADER_ICON: z.string().default(""),
+	MANIFEST_SHORT_NAME: z.string().min(1).default("Todo App"),
+
 	// for server
 	DATABASE_URL: z.url(),
 	R2_S3_URL: z.url(),

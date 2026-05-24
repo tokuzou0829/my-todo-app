@@ -10,6 +10,7 @@ import {
 	UserPlus,
 	X,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
@@ -88,9 +89,13 @@ const setStoredSidebarState = (isOpen: boolean) => {
 };
 
 export function SiteHeader({
+	siteName = "Todo App",
+	siteHeaderIcon,
 	showLoginButton = true,
 	showSignupButton = true,
 }: {
+	siteName?: string;
+	siteHeaderIcon?: string;
 	showLoginButton?: boolean;
 	showSignupButton?: boolean;
 }) {
@@ -174,11 +179,28 @@ export function SiteHeader({
 						)}
 						onClick={closeOnMobile}
 					>
-						<span className="grid size-8 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
-							<CheckSquare2 className="size-4" />
+						<span
+							className={cn(
+								"grid size-8 shrink-0 place-items-center rounded-xl",
+								siteHeaderIcon
+									? "overflow-hidden bg-transparent"
+									: "bg-primary text-primary-foreground",
+							)}
+						>
+							{siteHeaderIcon ? (
+								<Image
+									src={siteHeaderIcon}
+									alt=""
+									width={32}
+									height={32}
+									className="size-8 object-cover"
+								/>
+							) : (
+								<CheckSquare2 className="size-4" />
+							)}
 						</span>
 						<span className={cn("truncate", !isOpen && "sr-only")}>
-							Todo App
+							{siteName}
 						</span>
 					</Link>
 
