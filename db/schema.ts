@@ -230,6 +230,76 @@ export const subscriptionLabelAssignment = pgTable(
 	],
 );
 
+export const financeEntry = pgTable(
+	"finance_entry",
+	{
+		id: text("id").primaryKey().notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		type: text("type").notNull(),
+		title: text("title").notNull(),
+		amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+		currency: text("currency").default("JPY").notNull(),
+		occurredAt: timestamp("occurred_at").notNull(),
+		paymentMethod: text("payment_method").default("other").notNull(),
+		merchant: text("merchant"),
+		memo: text("memo"),
+		isPrivate: boolean("is_private").default(false).notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [
+		index("finance_entry_userId_idx").on(table.userId),
+		index("finance_entry_userId_occurredAt_idx").on(
+			table.userId,
+			table.occurredAt,
+		),
+	],
+);
+
+export const financeTag = pgTable(
+	"finance_tag",
+	{
+		id: text("id").primaryKey().notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		color: text("color").notNull(),
+		isDefault: boolean("is_default").default(false).notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [
+		index("finance_tag_userId_idx").on(table.userId),
+		uniqueIndex("finance_tag_userId_name_idx").on(table.userId, table.name),
+	],
+);
+
+export const financeEntryTagAssignment = pgTable(
+	"finance_entry_tag_assignment",
+	{
+		entryId: text("entry_id")
+			.notNull()
+			.references(() => financeEntry.id, { onDelete: "cascade" }),
+		tagId: text("tag_id")
+			.notNull()
+			.references(() => financeTag.id, { onDelete: "cascade" }),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.entryId, table.tagId] }),
+		index("finance_entry_tag_assignment_tagId_idx").on(table.tagId),
+	],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
 	sessions: many(session),
 	accounts: many(account),
@@ -238,6 +308,8 @@ export const userRelations = relations(user, ({ many }) => ({
 	todos: many(todo),
 	subscriptions: many(subscription),
 	subscriptionLabels: many(subscriptionLabel),
+	financeEntries: many(financeEntry),
+	financeTags: many(financeTag),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -310,6 +382,39 @@ export const subscriptionLabelAssignmentRelations = relations(
 		label: one(subscriptionLabel, {
 			fields: [subscriptionLabelAssignment.labelId],
 			references: [subscriptionLabel.id],
+		}),
+	}),
+);
+
+export const financeEntryRelations = relations(
+	financeEntry,
+	({ many, one }) => ({
+		user: one(user, {
+			fields: [financeEntry.userId],
+			references: [user.id],
+		}),
+		tagAssignments: many(financeEntryTagAssignment),
+	}),
+);
+
+export const financeTagRelations = relations(financeTag, ({ many, one }) => ({
+	user: one(user, {
+		fields: [financeTag.userId],
+		references: [user.id],
+	}),
+	assignments: many(financeEntryTagAssignment),
+}));
+
+export const financeEntryTagAssignmentRelations = relations(
+	financeEntryTagAssignment,
+	({ one }) => ({
+		entry: one(financeEntry, {
+			fields: [financeEntryTagAssignment.entryId],
+			references: [financeEntry.id],
+		}),
+		tag: one(financeTag, {
+			fields: [financeEntryTagAssignment.tagId],
+			references: [financeTag.id],
 		}),
 	}),
 );

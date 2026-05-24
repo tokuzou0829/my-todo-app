@@ -72,6 +72,61 @@ type NewLabel = {
 };
 ```
 
+## FinanceEntry
+
+```ts
+type FinanceEntry = {
+  id: string;
+  userId: string;
+  type: "expense" | "income";
+  title: string;
+  amountMinor: number;
+  currency: "JPY";
+  occurredAt: string;
+  paymentMethod: "cash" | "credit_card" | "bank_transfer" | "e_money" | "other";
+  merchant: string | null;
+  memo: string | null;
+  isPrivate: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tags: FinanceTag[];
+};
+```
+
+## FinanceTag
+
+```ts
+type FinanceTag = {
+  id: string;
+  userId: string;
+  name: string;
+  color: "lime" | "blue" | "violet" | "rose" | "amber" | "slate";
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+## NewFinanceTag
+
+```ts
+type NewFinanceTag = {
+  name: string;
+  color: "lime" | "blue" | "violet" | "rose" | "amber" | "slate";
+};
+```
+
+## FinanceAnalyticsPoint
+
+```ts
+type FinanceAnalyticsPoint = {
+  period: string;
+  income: number;
+  expense: number;
+  net: number;
+};
+```
+
 ## ErrorResponse
 
 ```ts

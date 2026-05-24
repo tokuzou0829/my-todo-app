@@ -177,6 +177,95 @@ describe("/routes/developer", () => {
 		expect(deleteResponse.status).toBe(200);
 	});
 
+	it("APIキーで本人の家計簿をprivate含めてCRUDと集計できる", async () => {
+		await createUser();
+		const key = await createApiKey();
+
+		const createResponse = await app.request("/v1/finance/entries", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${key}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				type: "expense",
+				title: "Private dinner",
+				amountMinor: 6800,
+				currency: "JPY",
+				occurredAt: "2026-05-01T00:00:00.000Z",
+				paymentMethod: "credit_card",
+				isPrivate: true,
+				newTags: [{ name: "交際費", color: "rose" }],
+			}),
+		});
+		const createJson = await createResponse.json();
+
+		expect(createResponse.status).toBe(201);
+		expect(createJson.entry).toMatchObject({
+			title: "Private dinner",
+			type: "expense",
+			isPrivate: true,
+		});
+		expect(createJson.entry.tags).toEqual([
+			expect.objectContaining({ name: "交際費", color: "rose" }),
+		]);
+
+		const entryId = createJson.entry.id as string;
+		const tagId = createJson.entry.tags[0].id as string;
+		const listResponse = await app.request("/v1/finance", {
+			headers: { Authorization: `Bearer ${key}` },
+		});
+		const listJson = await listResponse.json();
+
+		expect(listResponse.status).toBe(200);
+		expect(listJson.entries).toHaveLength(1);
+		expect(listJson.entries[0]).toMatchObject({ id: entryId, isPrivate: true });
+		expect(listJson.tags.length).toBeGreaterThanOrEqual(12);
+
+		const updateResponse = await app.request(`/v1/finance/entries/${entryId}`, {
+			method: "PATCH",
+			headers: {
+				Authorization: `Bearer ${key}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				type: "income",
+				title: "Refund",
+				amountMinor: 2000,
+				occurredAt: "2026-05-02T00:00:00.000Z",
+				tagIds: [tagId],
+			}),
+		});
+		const updateJson = await updateResponse.json();
+
+		expect(updateResponse.status).toBe(200);
+		expect(updateJson.entry).toMatchObject({
+			title: "Refund",
+			type: "income",
+			amountMinor: 2000,
+		});
+
+		const analyticsResponse = await app.request(
+			"/v1/finance/analytics?groupBy=month",
+			{ headers: { Authorization: `Bearer ${key}` } },
+		);
+		const analyticsJson = await analyticsResponse.json();
+
+		expect(analyticsResponse.status).toBe(200);
+		expect(analyticsJson.summary).toMatchObject({
+			income: 2000,
+			expense: 0,
+			net: 2000,
+		});
+
+		const deleteResponse = await app.request(`/v1/finance/entries/${entryId}`, {
+			method: "DELETE",
+			headers: { Authorization: `Bearer ${key}` },
+		});
+
+		expect(deleteResponse.status).toBe(200);
+	});
+
 	it("他ユーザーのデータは操作できない", async () => {
 		await createUser();
 		const key = await createApiKey();

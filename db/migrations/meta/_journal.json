@@ -64,6 +64,13 @@
 			"when": 1779538170933,
 			"tag": "0008_violet_speed",
 			"breakpoints": true
+		},
+		{
+			"idx": 9,
+			"version": "7",
+			"when": 1779613634714,
+			"tag": "0009_clammy_starjammers",
+			"breakpoints": true
 		}
 	]
 }

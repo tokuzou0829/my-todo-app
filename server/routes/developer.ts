@@ -11,6 +11,19 @@ import {
 	getApiKeyUserOrThrow,
 } from "@/server/middleware/api-key-auth";
 import {
+	createFinanceEntry,
+	createFinanceEntrySchema,
+	createFinanceTag,
+	createFinanceTagSchema,
+	deleteFinanceTag,
+	getFinanceAnalytics,
+	getFinanceEntriesWithTags,
+	updateFinanceEntry,
+	updateFinanceEntrySchema,
+	updateFinanceTag,
+	updateFinanceTagSchema,
+} from "@/server/routes/finance";
+import {
 	createSubscriptionSchema,
 	getSubscriptionsWithLabels,
 	getSubscriptionWithLabels,
@@ -62,6 +75,14 @@ const updateTodoSchema = z
 
 const idSchema = z.object({
 	id: z.string().uuid(),
+});
+
+const financeAnalyticsQuerySchema = z.object({
+	groupBy: z.enum(["week", "month", "year"]).default("month"),
+	from: z.string().datetime().optional(),
+	to: z.string().datetime().optional(),
+	tagIds: z.string().optional(),
+	type: z.enum(["expense", "income"]).optional(),
 });
 
 const app = createHonoApp()
@@ -267,6 +288,136 @@ const app = createHonoApp()
 		}
 
 		return c.json({ subscription });
+	})
+	.get("/v1/finance", async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const result = await getFinanceEntriesWithTags(c.get("db"), user.id, {
+			ensureDefaultTags: true,
+		});
+
+		return c.json(result);
+	})
+	.get(
+		"/v1/finance/analytics",
+		zValidator("query", financeAnalyticsQuerySchema),
+		async (c) => {
+			const { user } = getApiKeyUserOrThrow(c);
+			const query = c.req.valid("query");
+			const result = await getFinanceAnalytics(c.get("db"), user.id, {
+				groupBy: query.groupBy,
+				from: query.from ? new Date(query.from) : undefined,
+				to: query.to ? new Date(query.to) : undefined,
+				tagIds: query.tagIds
+					?.split(",")
+					.map((item) => item.trim())
+					.filter(Boolean),
+				type: query.type,
+				ensureDefaultTags: true,
+			});
+
+			return c.json(result);
+		},
+	)
+	.post(
+		"/v1/finance/entries",
+		zValidator("json", createFinanceEntrySchema),
+		async (c) => {
+			const { user } = getApiKeyUserOrThrow(c);
+			const entry = await createFinanceEntry(
+				c.get("db"),
+				user.id,
+				c.req.valid("json"),
+			);
+
+			return c.json({ entry }, 201);
+		},
+	)
+	.patch(
+		"/v1/finance/entries/:id",
+		zValidator("param", idSchema),
+		zValidator("json", updateFinanceEntrySchema),
+		async (c) => {
+			const { user } = getApiKeyUserOrThrow(c);
+			const { id } = c.req.valid("param");
+			const entry = await updateFinanceEntry(
+				c.get("db"),
+				user.id,
+				id,
+				c.req.valid("json"),
+			);
+
+			return c.json({ entry });
+		},
+	)
+	.delete(
+		"/v1/finance/entries/:id",
+		zValidator("param", idSchema),
+		async (c) => {
+			const { user } = getApiKeyUserOrThrow(c);
+			const { id } = c.req.valid("param");
+			const [entry] = await c
+				.get("db")
+				.delete(schema.financeEntry)
+				.where(
+					and(
+						eq(schema.financeEntry.id, id),
+						eq(schema.financeEntry.userId, user.id),
+					),
+				)
+				.returning();
+
+			if (!entry) {
+				throw new HTTPException(404, { message: "Finance entry not found" });
+			}
+
+			return c.json({ entry });
+		},
+	)
+	.get("/v1/finance/tags", async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const result = await getFinanceEntriesWithTags(c.get("db"), user.id, {
+			ensureDefaultTags: true,
+		});
+
+		return c.json({ tags: result.tags });
+	})
+	.post(
+		"/v1/finance/tags",
+		zValidator("json", createFinanceTagSchema),
+		async (c) => {
+			const { user } = getApiKeyUserOrThrow(c);
+			const tag = await createFinanceTag(
+				c.get("db"),
+				user.id,
+				c.req.valid("json"),
+			);
+
+			return c.json({ tag }, 201);
+		},
+	)
+	.patch(
+		"/v1/finance/tags/:id",
+		zValidator("param", idSchema),
+		zValidator("json", updateFinanceTagSchema),
+		async (c) => {
+			const { user } = getApiKeyUserOrThrow(c);
+			const { id } = c.req.valid("param");
+			const tag = await updateFinanceTag(
+				c.get("db"),
+				user.id,
+				id,
+				c.req.valid("json"),
+			);
+
+			return c.json({ tag });
+		},
+	)
+	.delete("/v1/finance/tags/:id", zValidator("param", idSchema), async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const { id } = c.req.valid("param");
+		const tag = await deleteFinanceTag(c.get("db"), user.id, id);
+
+		return c.json({ tag });
 	});
 
 export default app;

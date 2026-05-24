@@ -4,6 +4,7 @@ import {
 	CheckSquare2,
 	CreditCard,
 	KeyRound,
+	Landmark,
 	LogIn,
 	LogOut,
 	Menu,
@@ -37,6 +38,11 @@ const navItems = [
 		href: "/subscriptions",
 		label: "サブスクリプション",
 		icon: CreditCard,
+	},
+	{
+		href: "/finance",
+		label: "家計簿",
+		icon: Landmark,
 	},
 	{
 		href: "/login",
@@ -112,7 +118,7 @@ export function SiteHeader({
 		session?.user || (!isPending && showLoginButton),
 	);
 	const visibleNavItems = session?.user
-		? navItems.slice(0, 2)
+		? navItems.slice(0, 3)
 		: navItems.filter((item) => {
 				if (item.href === "/login") {
 					return showLoginButton;

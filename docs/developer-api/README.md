@@ -1,6 +1,6 @@
 # Developer API
 
-Developer API は、外部クライアントから本人の Todo とサブスクリプションを読み書きするための API です。
+Developer API は、外部クライアントから本人の Todo、サブスクリプション、家計簿を読み書きするための API です。
 
 ## Base URL
 
@@ -55,6 +55,22 @@ X-API-Key: <API_KEY>
 | `DELETE` | `/subscriptions/:id` | サブスクリプションを削除     |
 
 詳しくは [Subscriptions](./subscriptions.md) を参照してください。
+
+### Finance
+
+| Method   | Path                   | Description          |
+| -------- | ---------------------- | -------------------- |
+| `GET`    | `/finance`             | 家計簿データを取得   |
+| `GET`    | `/finance/analytics`   | 家計簿の集計を取得   |
+| `POST`   | `/finance/entries`     | 家計簿項目を作成     |
+| `PATCH`  | `/finance/entries/:id` | 家計簿項目を更新     |
+| `DELETE` | `/finance/entries/:id` | 家計簿項目を削除     |
+| `GET`    | `/finance/tags`        | 家計簿タグ一覧を取得 |
+| `POST`   | `/finance/tags`        | 家計簿タグを作成     |
+| `PATCH`  | `/finance/tags/:id`    | 家計簿タグを更新     |
+| `DELETE` | `/finance/tags/:id`    | 家計簿タグを削除     |
+
+詳しくは [Finance](./finance.md) を参照してください。
 
 ## Response Format
 
