@@ -1,7 +1,6 @@
 "use client";
 
 import {
-	Banknote,
 	ChevronLeft,
 	ChevronRight,
 	Lock,
@@ -554,13 +553,6 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 						</p>
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
-						<Badge
-							variant="outline"
-							className="gap-2 px-3 py-1 text-muted-foreground"
-						>
-							<Banknote className="size-3" />
-							JPY 固定
-						</Badge>
 						{isReadOnly ? null : (
 							<>
 								<Button

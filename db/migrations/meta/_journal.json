@@ -71,6 +71,13 @@
 			"when": 1779613634714,
 			"tag": "0009_clammy_starjammers",
 			"breakpoints": true
+		},
+		{
+			"idx": 10,
+			"version": "7",
+			"when": 1779628544226,
+			"tag": "0010_eager_cable",
+			"breakpoints": true
 		}
 	]
 }

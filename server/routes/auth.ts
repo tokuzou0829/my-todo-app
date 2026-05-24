@@ -27,10 +27,11 @@ const app = createHonoApp()
 		async (c) => {
 			const { user } = await getUserOrThrow(c);
 			const { message } = c.req.valid("json");
-			const { client, baseUrl } = c.get("r2");
+			const { client, baseUrl, bucketName } = c.get("r2");
 			const fileRepository = createFileRepository(client, c.get("db"), baseUrl);
 			const secureMessageWorkflow = createSecureMessageWrokflow(
 				fileRepository.saveBlobFile,
+				bucketName,
 			);
 			await secureMessageWorkflow(message, user);
 

@@ -5,15 +5,16 @@ export const createBlobFile = (params: {
 	bucket: string;
 	keyPrefix: string;
 	contentType: string;
+	keyExtension?: string;
 }): BlobFile => {
-	const { blob, bucket, keyPrefix, contentType } = params;
+	const { blob, bucket, keyPrefix, contentType, keyExtension = "" } = params;
 	const id = generateFileId();
 	return {
 		kind: "BlobFile",
 		id,
 		blob,
 		bucket,
-		key: `${keyPrefix}/${id}`,
+		key: `${keyPrefix}/${id}${keyExtension}`,
 		contentType,
 	};
 };

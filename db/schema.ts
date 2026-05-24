@@ -4,6 +4,7 @@ import {
 	boolean,
 	index,
 	integer,
+	jsonb,
 	pgTable,
 	primaryKey,
 	text,
@@ -163,6 +164,82 @@ export const todo = pgTable(
 	(table) => [index("todo_userId_idx").on(table.userId)],
 );
 
+export const scrap = pgTable(
+	"scrap",
+	{
+		id: text("id").primaryKey().notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		body: text("body"),
+		kind: text("kind").default("text").notNull(),
+		sourceUrl: text("source_url"),
+		isPrivate: boolean("is_private").default(false).notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [
+		index("scrap_userId_idx").on(table.userId),
+		index("scrap_userId_createdAt_idx").on(table.userId, table.createdAt),
+	],
+);
+
+export const scrapLinkPreview = pgTable(
+	"scrap_link_preview",
+	{
+		id: text("id").primaryKey().notNull(),
+		scrapId: text("scrap_id")
+			.notNull()
+			.references(() => scrap.id, { onDelete: "cascade" }),
+		url: text("url").notNull(),
+		title: text("title"),
+		description: text("description"),
+		siteName: text("site_name"),
+		providerName: text("provider_name"),
+		authorName: text("author_name"),
+		html: text("html"),
+		imageFileId: text("image_file_id").references(() => files.id, {
+			onDelete: "set null",
+		}),
+		imageAlt: text("image_alt"),
+		metadataSource: text("metadata_source").default("none").notNull(),
+		rawMetadata: jsonb("raw_metadata").$type<Record<string, unknown>>(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(table) => [
+		uniqueIndex("scrap_link_preview_scrapId_idx").on(table.scrapId),
+		index("scrap_link_preview_imageFileId_idx").on(table.imageFileId),
+	],
+);
+
+export const scrapAttachment = pgTable(
+	"scrap_attachment",
+	{
+		id: text("id").primaryKey().notNull(),
+		scrapId: text("scrap_id")
+			.notNull()
+			.references(() => scrap.id, { onDelete: "cascade" }),
+		fileId: text("file_id")
+			.notNull()
+			.references(() => files.id, { onDelete: "cascade" }),
+		altText: text("alt_text"),
+		position: integer("position").notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(table) => [
+		index("scrap_attachment_scrapId_idx").on(table.scrapId),
+		index("scrap_attachment_fileId_idx").on(table.fileId),
+		uniqueIndex("scrap_attachment_scrapId_position_idx").on(
+			table.scrapId,
+			table.position,
+		),
+	],
+);
+
 export const subscription = pgTable(
 	"subscription",
 	{
@@ -306,6 +383,7 @@ export const userRelations = relations(user, ({ many }) => ({
 	pushSubscriptions: many(pushSubscription),
 	apiKeys: many(apiKey),
 	todos: many(todo),
+	scraps: many(scrap),
 	subscriptions: many(subscription),
 	subscriptionLabels: many(subscriptionLabel),
 	financeEntries: many(financeEntry),
@@ -349,6 +427,43 @@ export const todoRelations = relations(todo, ({ one }) => ({
 		references: [user.id],
 	}),
 }));
+
+export const scrapRelations = relations(scrap, ({ many, one }) => ({
+	user: one(user, {
+		fields: [scrap.userId],
+		references: [user.id],
+	}),
+	linkPreview: one(scrapLinkPreview),
+	attachments: many(scrapAttachment),
+}));
+
+export const scrapLinkPreviewRelations = relations(
+	scrapLinkPreview,
+	({ one }) => ({
+		scrap: one(scrap, {
+			fields: [scrapLinkPreview.scrapId],
+			references: [scrap.id],
+		}),
+		imageFile: one(files, {
+			fields: [scrapLinkPreview.imageFileId],
+			references: [files.id],
+		}),
+	}),
+);
+
+export const scrapAttachmentRelations = relations(
+	scrapAttachment,
+	({ one }) => ({
+		scrap: one(scrap, {
+			fields: [scrapAttachment.scrapId],
+			references: [scrap.id],
+		}),
+		file: one(files, {
+			fields: [scrapAttachment.fileId],
+			references: [files.id],
+		}),
+	}),
+);
 
 export const subscriptionRelations = relations(
 	subscription,

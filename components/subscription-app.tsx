@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CreditCard, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Pencil, Plus, Trash2 } from "lucide-react";
 import {
 	type Dispatch,
 	type FormEvent,
@@ -418,13 +418,6 @@ export function SubscriptionApp({
 						</p>
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
-						<Badge
-							variant="outline"
-							className="gap-2 px-3 py-1 text-muted-foreground"
-						>
-							<CreditCard className="size-3" />
-							JPY 固定
-						</Badge>
 						{isReadOnly ? null : (
 							<Button onClick={openCreate}>
 								<Plus className="size-4" />

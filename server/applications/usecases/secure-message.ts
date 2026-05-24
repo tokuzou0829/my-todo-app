@@ -2,11 +2,11 @@ import type { SaveBlobFileService } from "@/server/infrastructure/repositories/f
 import { createBlobFile } from "@/server/objects/file";
 
 export const createSecureMessageWrokflow =
-	(saveBlobFile: SaveBlobFileService) =>
+	(saveBlobFile: SaveBlobFileService, bucketName: string) =>
 	async (message: string, user: { id: string }) => {
 		const file = createBlobFile({
 			blob: new Blob([message], { type: "text/plain" }),
-			bucket: "techjam2026winter",
+			bucket: bucketName,
 			keyPrefix: user.id,
 			contentType: "text/plain",
 		});

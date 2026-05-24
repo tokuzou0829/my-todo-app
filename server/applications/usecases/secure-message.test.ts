@@ -17,7 +17,10 @@ describe("createSecureMessageWorkflow", () => {
 
 		const saveBlobFile = vi.fn().mockResolvedValue(fakeSavedFile);
 
-		const workflow = createSecureMessageWrokflow(saveBlobFile);
+		const workflow = createSecureMessageWrokflow(
+			saveBlobFile,
+			"techjam2026winter",
+		);
 
 		const result = await workflow("hello", { id: "user_1" });
 

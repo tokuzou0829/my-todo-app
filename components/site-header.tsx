@@ -8,6 +8,7 @@ import {
 	LogIn,
 	LogOut,
 	Menu,
+	Sparkles,
 	UserPlus,
 	X,
 } from "lucide-react";
@@ -33,6 +34,11 @@ const navItems = [
 		href: "/",
 		label: "Todo",
 		icon: CheckSquare2,
+	},
+	{
+		href: "/scraps",
+		label: "スクラップ",
+		icon: Sparkles,
 	},
 	{
 		href: "/subscriptions",
@@ -118,7 +124,7 @@ export function SiteHeader({
 		session?.user || (!isPending && showLoginButton),
 	);
 	const visibleNavItems = session?.user
-		? navItems.slice(0, 3)
+		? navItems.slice(0, 4)
 		: navItems.filter((item) => {
 				if (item.href === "/login") {
 					return showLoginButton;
