@@ -526,7 +526,7 @@ function ScrapComposer({
 						{isSaving ? "追加中..." : "追加"}
 					</Button>
 				</div>
-				<Input
+				<input
 					key={fileInputKey}
 					id="scrap-images"
 					type="file"
