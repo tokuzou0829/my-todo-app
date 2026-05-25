@@ -259,10 +259,11 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 					</p>
 				) : scraps.length ? (
 					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-						{scraps.map((scrap) => (
+						{scraps.map((scrap, index) => (
 							<ScrapCard
 								key={scrap.id}
 								scrap={scrap}
+								loadImageEagerly={index < 3}
 								onOpen={() => setSelectedScrap(scrap)}
 							/>
 						))}
@@ -478,7 +479,15 @@ function ScrapDetailDialog({
 	);
 }
 
-function ScrapCard({ scrap, onOpen }: { scrap: Scrap; onOpen: () => void }) {
+function ScrapCard({
+	scrap,
+	loadImageEagerly,
+	onOpen,
+}: {
+	scrap: Scrap;
+	loadImageEagerly: boolean;
+	onOpen: () => void;
+}) {
 	const Icon = kindIcons[scrap.kind];
 	const heroImage =
 		scrap.linkPreview?.imageUrl ?? scrap.attachments[0]?.url ?? null;
@@ -495,6 +504,8 @@ function ScrapCard({ scrap, onOpen }: { scrap: Scrap; onOpen: () => void }) {
 						src={heroImage}
 						alt={scrap.linkPreview?.imageAlt ?? scrap.title}
 						fill
+						loading={loadImageEagerly ? "eager" : "lazy"}
+						sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
 						unoptimized
 						className="object-cover transition duration-300 group-hover:scale-[1.03]"
 					/>

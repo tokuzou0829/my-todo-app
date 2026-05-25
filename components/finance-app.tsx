@@ -279,18 +279,6 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 		typeFilter !== "all" ||
 		groupBy !== "month";
 
-	const resetFilters = () => {
-		const now = startOfMonth(new Date());
-		setDisplayMonth(now);
-		const range = getMonthRange(now);
-		setPeriodFrom(range.from);
-		setPeriodTo(range.to);
-		setIsPeriodFilterActive(false);
-		setSelectedTagIds([]);
-		setTypeFilter("all");
-		setGroupBy("month");
-	};
-
 	const moveDisplayMonth = (monthDiff: number) => {
 		setDisplayMonth((current) => {
 			const nextMonth = addMonths(current, monthDiff);
@@ -663,7 +651,7 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 							tone={summary.net >= 0 ? "netPositive" : "netNegative"}
 						/>
 					</div>
-					<div className="h-72 border-border border-t pt-6 sm:h-80">
+					<div className="h-72 min-w-0 border-border border-t pt-6 sm:h-80">
 						{chartData.length ? (
 							<FinanceChart data={chartData} />
 						) : (
@@ -1045,7 +1033,12 @@ function FilterLabel({ children }: { children: ReactNode }) {
 
 function FinanceChart({ data }: { data: ChartPoint[] }) {
 	return (
-		<ResponsiveContainer width="100%" height="100%">
+		<ResponsiveContainer
+			width="100%"
+			height="100%"
+			minWidth={0}
+			initialDimension={{ width: 1, height: 1 }}
+		>
 			<ComposedChart
 				data={data}
 				margin={{ top: 10, right: 8, bottom: 0, left: 0 }}
