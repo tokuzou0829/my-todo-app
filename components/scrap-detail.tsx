@@ -42,19 +42,22 @@ export function ScrapDetail({
 }) {
 	const Icon = kindIcons[scrap.kind];
 	const hasMedia = scrap.linkPreview !== null || scrap.attachments.length > 0;
+	const isPage = !isDialog;
 	const title = isDialog ? (
 		<DialogTitle className="break-all text-2xl leading-tight">
 			{scrap.title}
 		</DialogTitle>
 	) : (
-		<h1 className="font-semibold text-2xl leading-tight">{scrap.title}</h1>
+		<h1 className="break-all font-semibold text-3xl leading-tight tracking-tight sm:text-4xl">
+			{scrap.title}
+		</h1>
 	);
 	const sourceUrl = scrap.sourceUrl ? (
 		<a
 			href={scrap.sourceUrl}
 			target="_blank"
 			rel="noreferrer"
-			className="inline-flex items-center gap-1 break-all text-primary-foreground underline-offset-4 hover:underline"
+			className="inline-flex items-center gap-1 break-all text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
 		>
 			<ExternalLink className="size-3" />
 			{scrap.sourceUrl}
@@ -62,14 +65,18 @@ export function ScrapDetail({
 	) : null;
 
 	return (
-		<div className="space-y-6">
+		<div className={cn("space-y-6", isPage && "space-y-8")}>
 			<div
 				className={cn(
 					"grid gap-6",
-					hasMedia && "lg:grid-cols-[minmax(0,0.9fr)_minmax(20rem,1.1fr)]",
+					isPage && "gap-8",
+					hasMedia &&
+						(isPage
+							? "lg:grid-cols-[minmax(0,0.85fr)_minmax(22rem,1.15fr)]"
+							: "lg:grid-cols-[minmax(0,0.9fr)_minmax(20rem,1.1fr)]"),
 				)}
 			>
-				<div className="space-y-5">
+				<div className={cn("space-y-5", isPage && "lg:pt-2")}>
 					<DialogHeader>
 						<div className="flex flex-wrap items-center gap-2 pr-8">
 							<Badge variant="secondary" className="gap-1">
@@ -90,8 +97,13 @@ export function ScrapDetail({
 					</DialogHeader>
 
 					{scrap.body ? (
-						<div className="rounded-2xl border border-border bg-muted/30 p-4">
-							<p className="whitespace-pre-wrap text-foreground text-sm leading-7">
+						<div className="border-border border-l-2 pl-5">
+							<p
+								className={cn(
+									"whitespace-pre-wrap text-foreground leading-7",
+									isPage ? "text-base sm:text-lg sm:leading-8" : "text-sm",
+								)}
+							>
 								{scrap.body}
 							</p>
 						</div>
@@ -99,9 +111,9 @@ export function ScrapDetail({
 				</div>
 
 				{hasMedia ? (
-					<div className="space-y-4 lg:pr-1">
+					<div className={cn("space-y-4 lg:pr-1", isPage && "lg:pr-0")}>
 						{scrap.linkPreview ? (
-							<LinkPreview preview={scrap.linkPreview} />
+							<LinkPreview preview={scrap.linkPreview} isPage={isPage} />
 						) : null}
 
 						{scrap.attachments.length ? (
@@ -122,7 +134,12 @@ export function ScrapDetail({
 											href={attachment.url}
 											target="_blank"
 											rel="noreferrer"
-											className="overflow-hidden rounded-2xl border border-border bg-muted"
+											className={cn(
+												"overflow-hidden bg-muted",
+												isPage
+													? "rounded-3xl"
+													: "rounded-2xl border border-border",
+											)}
 										>
 											<Image
 												src={attachment.url}
@@ -144,7 +161,13 @@ export function ScrapDetail({
 	);
 }
 
-function LinkPreview({ preview }: { preview: ScrapLinkPreview }) {
+function LinkPreview({
+	preview,
+	isPage = false,
+}: {
+	preview: ScrapLinkPreview;
+	isPage?: boolean;
+}) {
 	const embedSize = preview.html ? getEmbedSize(preview.html) : null;
 	const embedStyle = embedSize?.width
 		? { aspectRatio: `${embedSize.width} / ${embedSize.height}` }
@@ -166,7 +189,12 @@ function LinkPreview({ preview }: { preview: ScrapLinkPreview }) {
 	}
 
 	return (
-		<div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+		<div
+			className={cn(
+				"overflow-hidden bg-card",
+				isPage ? "rounded-3xl" : "rounded-2xl border border-border shadow-sm",
+			)}
+		>
 			{preview.imageUrl ? (
 				<Image
 					src={preview.imageUrl}

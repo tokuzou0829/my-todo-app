@@ -114,9 +114,9 @@ export function ScrapDetailPage({
 				</p>
 			) : null}
 			{scrap ? (
-				<div className="rounded-3xl border border-border bg-background p-6 shadow-sm">
+				<article className="mx-auto w-full max-w-5xl py-2 sm:py-4">
 					<ScrapDetail scrap={scrap} />
-				</div>
+				</article>
 			) : null}
 		</div>
 	);
