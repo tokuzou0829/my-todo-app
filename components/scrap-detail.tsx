@@ -20,8 +20,8 @@ import { cn } from "@/lib/utils";
 import type { Scrap, ScrapKind, ScrapLinkPreview } from "./scrap-types";
 
 export const kindLabels: Record<ScrapKind, string> = {
-	short_text: "短文",
-	long_text: "長文",
+	short_text: "メモ",
+	long_text: "ノート",
 	link: "リンク",
 	image: "画像",
 };
