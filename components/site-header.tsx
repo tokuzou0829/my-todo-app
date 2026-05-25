@@ -203,8 +203,8 @@ export function SiteHeader({
 								<Image
 									src={siteHeaderIcon}
 									alt=""
-									width={32}
-									height={32}
+									width={128}
+									height={128}
 									className="size-8 object-cover"
 								/>
 							) : (
