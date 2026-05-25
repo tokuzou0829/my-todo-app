@@ -1,121 +1,61 @@
 "use client";
 
-import {
-	Bookmark,
-	ExternalLink,
-	FileText,
-	Image as ImageIcon,
-	Link as LinkIcon,
-	Lock,
-	Paperclip,
-	Trash2,
-	X,
-} from "lucide-react";
+import { ExternalLink, Lock, Paperclip, X } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	Pagination,
+	PaginationContent,
+	PaginationEllipsis,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
+} from "@/components/ui/pagination";
 import { apiClient } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { formatDate, formatHost, kindIcons, kindLabels } from "./scrap-detail";
+import type { Scrap, ScrapsResponse } from "./scrap-types";
 
-type ScrapKind = "short_text" | "long_text" | "link" | "image";
-
-type ScrapAttachment = {
-	id: string;
-	scrapId: string;
-	fileId: string;
-	altText: string | null;
-	position: number;
-	createdAt: string;
-	url: string;
-};
-
-type ScrapLinkPreview = {
-	id: string;
-	scrapId: string;
-	url: string;
-	title: string | null;
-	description: string | null;
-	siteName: string | null;
-	providerName: string | null;
-	authorName: string | null;
-	html: string | null;
-	imageFileId: string | null;
-	imageAlt: string | null;
-	metadataSource: string;
-	createdAt: string;
-	imageUrl: string | null;
-};
-
-type Scrap = {
-	id: string;
-	userId: string;
-	title: string;
-	body: string | null;
-	kind: ScrapKind;
-	sourceUrl: string | null;
-	isPrivate: boolean;
-	createdAt: string;
-	updatedAt: string;
-	linkPreview: ScrapLinkPreview | null;
-	attachments: ScrapAttachment[];
-};
-
-type ScrapsResponse = {
-	scraps: Scrap[];
-	owner: { id: string; name: string } | null;
-	isReadOnly: boolean;
-};
-
-type ScrapResponse = {
-	scrap: Scrap;
-};
-
-const kindLabels: Record<ScrapKind, string> = {
-	short_text: "短文",
-	long_text: "長文",
-	link: "リンク",
-	image: "画像",
-};
-
-const kindIcons = {
-	short_text: Bookmark,
-	long_text: FileText,
-	link: LinkIcon,
-	image: ImageIcon,
-} satisfies Record<ScrapKind, typeof Bookmark>;
+const SCRAPS_PER_PAGE = 30;
 
 export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const [scraps, setScraps] = useState<Scrap[]>([]);
+	const [request, setRequest] = useState({ page: 1, reloadKey: 0 });
+	const [pagination, setPagination] = useState({
+		page: 1,
+		perPage: SCRAPS_PER_PAGE,
+		total: 0,
+		pageCount: 0,
+	});
 	const [title, setTitle] = useState("");
 	const [body, setBody] = useState("");
 	const [images, setImages] = useState<File[]>([]);
 	const [fileInputKey, setFileInputKey] = useState(0);
 	const [isPrivate, setIsPrivate] = useState(false);
-	const [selectedScrap, setSelectedScrap] = useState<Scrap | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
-	const [deletingScrapId, setDeletingScrapId] = useState<string | null>(null);
 
 	useEffect(() => {
 		let ignore = false;
+		const queryPage = request.page;
 
 		const loadScraps = async () => {
+			setIsLoading(true);
 			setError(null);
-			const response = await apiClient.api.scraps.$get();
+			const response = await apiClient.api.scraps.$get({
+				query: {
+					page: String(queryPage),
+					perPage: String(SCRAPS_PER_PAGE),
+				},
+			});
 
 			if (!response.ok) {
 				if (!ignore) {
@@ -129,7 +69,20 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 
 			const json = (await response.json()) as ScrapsResponse;
 			if (!ignore) {
+				if (
+					json.scraps.length === 0 &&
+					json.pagination.total > 0 &&
+					queryPage > 1
+				) {
+					setRequest((current) => ({
+						...current,
+						page: Math.max(1, json.pagination.pageCount),
+					}));
+					return;
+				}
+
 				setScraps(json.scraps);
+				setPagination(json.pagination);
 				setIsLoading(false);
 			}
 		};
@@ -139,6 +92,25 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 		return () => {
 			ignore = true;
 		};
+	}, [request]);
+
+	useEffect(() => {
+		const handleScrapDeleted = (event: Event) => {
+			const scrapId = (event as CustomEvent<{ id?: string }>).detail?.id;
+			if (!scrapId) {
+				return;
+			}
+
+			setScraps((current) => current.filter((scrap) => scrap.id !== scrapId));
+			setRequest((current) => ({
+				...current,
+				reloadKey: current.reloadKey + 1,
+			}));
+		};
+
+		window.addEventListener("scrap:deleted", handleScrapDeleted);
+		return () =>
+			window.removeEventListener("scrap:deleted", handleScrapDeleted);
 	}, []);
 
 	const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
@@ -175,10 +147,29 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 			return;
 		}
 
-		const json = (await response.json()) as ScrapResponse;
-		setScraps((current) => [json.scrap, ...current]);
 		resetForm();
+		if (request.page === 1) {
+			setRequest((current) => ({
+				...current,
+				reloadKey: current.reloadKey + 1,
+			}));
+		} else {
+			setRequest((current) => ({ ...current, page: 1 }));
+		}
 		setIsSaving(false);
+	};
+
+	const handlePageChange = (nextPage: number) => {
+		if (
+			nextPage === request.page ||
+			nextPage < 1 ||
+			nextPage > pagination.pageCount
+		) {
+			return;
+		}
+
+		setRequest((current) => ({ ...current, page: nextPage }));
+		window.scrollTo({ top: 0, behavior: "smooth" });
 	};
 
 	const handleImagesChange = (files: FileList | null) => {
@@ -205,26 +196,6 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 		setImages([]);
 		setIsPrivate(false);
 		setFileInputKey((current) => current + 1);
-	};
-
-	const deleteScrap = async (scrap: Scrap) => {
-		setDeletingScrapId(scrap.id);
-		setError(null);
-		setScraps((current) => current.filter((item) => item.id !== scrap.id));
-		setSelectedScrap(null);
-
-		const response = await apiClient.api.scraps[":id"].$delete({
-			param: { id: scrap.id },
-		});
-
-		if (!response.ok) {
-			setScraps((current) => sortScraps([scrap, ...current]));
-			setError(
-				await getErrorMessage(response, "スクラップの削除に失敗しました"),
-			);
-		}
-
-		setDeletingScrapId(null);
 	};
 
 	return (
@@ -258,16 +229,24 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 						スクラップを読み込んでいます...
 					</p>
 				) : scraps.length ? (
-					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-						{scraps.map((scrap, index) => (
-							<ScrapCard
-								key={scrap.id}
-								scrap={scrap}
-								loadImageEagerly={index < 3}
-								onOpen={() => setSelectedScrap(scrap)}
+					<>
+						<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+							{scraps.map((scrap, index) => (
+								<ScrapCard
+									key={scrap.id}
+									scrap={scrap}
+									loadImageEagerly={index < 3}
+								/>
+							))}
+						</div>
+						{pagination.pageCount > 1 ? (
+							<ScrapPagination
+								page={pagination.page}
+								pageCount={pagination.pageCount}
+								onPageChange={handlePageChange}
 							/>
-						))}
-					</div>
+						) : null}
+					</>
 				) : (
 					<div className="rounded-2xl border border-primary/40 border-dashed bg-primary/5 px-4 py-12 text-center">
 						<p className="font-semibold text-foreground text-sm">
@@ -281,16 +260,102 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 					</div>
 				)}
 			</section>
-
-			<ScrapDetailDialog
-				scrap={selectedScrap}
-				isReadOnly={isReadOnly}
-				isDeleting={selectedScrap?.id === deletingScrapId}
-				onClose={() => setSelectedScrap(null)}
-				onDelete={(scrap) => void deleteScrap(scrap)}
-			/>
 		</div>
 	);
+}
+
+function ScrapPagination({
+	page,
+	pageCount,
+	onPageChange,
+}: {
+	page: number;
+	pageCount: number;
+	onPageChange: (page: number) => void;
+}) {
+	const pages = getVisiblePages(page, pageCount);
+	const previousPage = page - 1;
+	const nextPage = page + 1;
+
+	return (
+		<Pagination className="pt-2">
+			<PaginationContent>
+				<PaginationItem>
+					<PaginationPrevious
+						href="#"
+						aria-disabled={page <= 1}
+						tabIndex={page <= 1 ? -1 : undefined}
+						className={page <= 1 ? "pointer-events-none opacity-50" : undefined}
+						onClick={(event) => {
+							event.preventDefault();
+							onPageChange(previousPage);
+						}}
+					/>
+				</PaginationItem>
+
+				{pages.map((item) =>
+					typeof item === "string" ? (
+						<PaginationItem key={item}>
+							<PaginationEllipsis />
+						</PaginationItem>
+					) : (
+						<PaginationItem key={item}>
+							<PaginationLink
+								href="#"
+								isActive={item === page}
+								onClick={(event) => {
+									event.preventDefault();
+									onPageChange(item);
+								}}
+							>
+								{item}
+							</PaginationLink>
+						</PaginationItem>
+					),
+				)}
+
+				<PaginationItem>
+					<PaginationNext
+						href="#"
+						aria-disabled={page >= pageCount}
+						tabIndex={page >= pageCount ? -1 : undefined}
+						className={
+							page >= pageCount ? "pointer-events-none opacity-50" : undefined
+						}
+						onClick={(event) => {
+							event.preventDefault();
+							onPageChange(nextPage);
+						}}
+					/>
+				</PaginationItem>
+			</PaginationContent>
+		</Pagination>
+	);
+}
+
+function getVisiblePages(page: number, pageCount: number) {
+	if (pageCount <= 7) {
+		return Array.from({ length: pageCount }, (_, index) => index + 1);
+	}
+
+	const pages: Array<number | "start-ellipsis" | "end-ellipsis"> = [1];
+	const start = Math.max(2, page - 1);
+	const end = Math.min(pageCount - 1, page + 1);
+
+	if (start > 2) {
+		pages.push("start-ellipsis");
+	}
+
+	for (let currentPage = start; currentPage <= end; currentPage++) {
+		pages.push(currentPage);
+	}
+
+	if (end < pageCount - 1) {
+		pages.push("end-ellipsis");
+	}
+
+	pages.push(pageCount);
+	return pages;
 }
 
 function ScrapComposer({
@@ -442,61 +507,21 @@ function ScrapComposer({
 	);
 }
 
-function ScrapDetailDialog({
-	scrap,
-	isReadOnly,
-	isDeleting,
-	onClose,
-	onDelete,
-}: {
-	scrap: Scrap | null;
-	isReadOnly: boolean;
-	isDeleting: boolean;
-	onClose: () => void;
-	onDelete: (scrap: Scrap) => void;
-}) {
-	return (
-		<Dialog open={scrap !== null} onOpenChange={(open) => !open && onClose()}>
-			<DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden bg-background p-0 sm:max-w-5xl">
-				<div className="max-h-[calc(90vh-4.5rem)] overflow-y-auto overscroll-contain bg-background p-6">
-					{scrap ? <ScrapDetail scrap={scrap} /> : null}
-				</div>
-				{scrap && !isReadOnly ? (
-					<DialogFooter className="shrink-0 border-border border-t bg-background p-4">
-						<Button
-							variant="outline"
-							className="text-destructive hover:text-destructive"
-							onClick={() => onDelete(scrap)}
-							disabled={isDeleting}
-						>
-							<Trash2 className="size-4" />
-							{isDeleting ? "削除中..." : "削除"}
-						</Button>
-					</DialogFooter>
-				) : null}
-			</DialogContent>
-		</Dialog>
-	);
-}
-
 function ScrapCard({
 	scrap,
 	loadImageEagerly,
-	onOpen,
 }: {
 	scrap: Scrap;
 	loadImageEagerly: boolean;
-	onOpen: () => void;
 }) {
 	const Icon = kindIcons[scrap.kind];
 	const heroImage =
 		scrap.linkPreview?.imageUrl ?? scrap.attachments[0]?.url ?? null;
 
 	return (
-		<button
-			type="button"
+		<Link
+			href={`/scraps/${scrap.id}`}
 			className="group flex min-h-72 flex-col overflow-hidden rounded-2xl border border-border bg-card text-left text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-			onClick={onOpen}
 		>
 			{heroImage ? (
 				<div className="relative aspect-[1.8] overflow-hidden bg-muted">
@@ -560,230 +585,25 @@ function ScrapCard({
 					) : null}
 				</div>
 			</div>
-		</button>
+		</Link>
 	);
-}
-
-function ScrapDetail({ scrap }: { scrap: Scrap }) {
-	const Icon = kindIcons[scrap.kind];
-	const hasMedia = scrap.linkPreview !== null || scrap.attachments.length > 0;
-
-	return (
-		<div className="space-y-6">
-			<div
-				className={cn(
-					"grid gap-6",
-					hasMedia && "lg:grid-cols-[minmax(0,0.9fr)_minmax(20rem,1.1fr)]",
-				)}
-			>
-				<div className="space-y-5">
-					<DialogHeader>
-						<div className="flex flex-wrap items-center gap-2 pr-8">
-							<Badge variant="secondary" className="gap-1">
-								<Icon className="size-3" />
-								{kindLabels[scrap.kind]}
-							</Badge>
-							{scrap.isPrivate ? <Badge variant="outline">非公開</Badge> : null}
-							<span className="text-muted-foreground text-xs">
-								{formatDate(scrap.createdAt)}
-							</span>
-						</div>
-						<DialogTitle className="text-2xl leading-tight">
-							{scrap.title}
-						</DialogTitle>
-						{scrap.sourceUrl ? (
-							<DialogDescription asChild>
-								<a
-									href={scrap.sourceUrl}
-									target="_blank"
-									rel="noreferrer"
-									className="inline-flex items-center gap-1 break-all text-primary-foreground underline-offset-4 hover:underline"
-								>
-									<ExternalLink className="size-3" />
-									{scrap.sourceUrl}
-								</a>
-							</DialogDescription>
-						) : null}
-					</DialogHeader>
-
-					{scrap.body ? (
-						<div className="rounded-2xl border border-border bg-muted/30 p-4">
-							<p className="whitespace-pre-wrap text-foreground text-sm leading-7">
-								{scrap.body}
-							</p>
-						</div>
-					) : null}
-				</div>
-
-				{hasMedia ? (
-					<div className="space-y-4 lg:pr-1">
-						{scrap.linkPreview ? (
-							<LinkPreview preview={scrap.linkPreview} />
-						) : null}
-
-						{scrap.attachments.length ? (
-							<div className="space-y-3">
-								<h4 className="font-semibold text-foreground text-sm">
-									添付画像
-								</h4>
-								<div
-									className={cn(
-										"grid gap-3",
-										scrap.attachments.length > 1 &&
-											"sm:grid-cols-2 lg:grid-cols-1",
-									)}
-								>
-									{scrap.attachments.map((attachment) => (
-										<a
-											key={attachment.id}
-											href={attachment.url}
-											target="_blank"
-											rel="noreferrer"
-											className="overflow-hidden rounded-2xl border border-border bg-muted"
-										>
-											<Image
-												src={attachment.url}
-												alt={attachment.altText ?? scrap.title}
-												width={960}
-												height={640}
-												unoptimized
-												className="max-h-[28rem] w-full object-contain"
-											/>
-										</a>
-									))}
-								</div>
-							</div>
-						) : null}
-					</div>
-				) : null}
-			</div>
-		</div>
-	);
-}
-
-function LinkPreview({ preview }: { preview: ScrapLinkPreview }) {
-	const embedSize = preview.html ? getEmbedSize(preview.html) : null;
-	const embedStyle = embedSize?.width
-		? { aspectRatio: `${embedSize.width} / ${embedSize.height}` }
-		: embedSize?.height
-			? { height: `${embedSize.height}px` }
-			: { aspectRatio: "16 / 9" };
-
-	if (preview.html) {
-		return (
-			<div className="w-full overflow-hidden" style={embedStyle}>
-				<iframe
-					title={preview.title ?? "oEmbed preview"}
-					srcDoc={createEmbedDocument(preview.html)}
-					sandbox="allow-scripts allow-same-origin allow-popups"
-					className="size-full border-0"
-				/>
-			</div>
-		);
-	}
-
-	return (
-		<div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-			{preview.imageUrl ? (
-				<Image
-					src={preview.imageUrl}
-					alt={preview.imageAlt ?? preview.title ?? "リンクプレビュー画像"}
-					width={1200}
-					height={630}
-					unoptimized
-					className="max-h-96 w-full object-cover"
-				/>
-			) : null}
-			<div className="space-y-3 p-4">
-				<p className="text-muted-foreground text-xs">
-					{preview.providerName ?? preview.siteName ?? formatHost(preview.url)}
-				</p>
-				{preview.title ? (
-					<h4 className="font-semibold text-foreground leading-snug">
-						{preview.title}
-					</h4>
-				) : null}
-				{preview.description ? (
-					<p className="text-muted-foreground text-sm leading-6">
-						{preview.description}
-					</p>
-				) : null}
-			</div>
-		</div>
-	);
-}
-
-function formatDate(value: string) {
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) {
-		return "日時不明";
-	}
-
-	return new Intl.DateTimeFormat("ja-JP", {
-		month: "numeric",
-		day: "numeric",
-		hour: "2-digit",
-		minute: "2-digit",
-	}).format(date);
-}
-
-function sortScraps(scraps: Scrap[]) {
-	return [...scraps].sort(
-		(left, right) =>
-			new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
-	);
-}
-
-function getEmbedSize(html: string) {
-	const width = getNumericHtmlAttribute(html, "width");
-	const height = getNumericHtmlAttribute(html, "height");
-
-	if (!height) {
-		return null;
-	}
-
-	return { width, height };
-}
-
-function getNumericHtmlAttribute(html: string, name: string) {
-	const match = html.match(
-		new RegExp(`${name}=["']?([0-9]+)(?:px)?(?=["'\\s>])`, "i"),
-	);
-	if (!match?.[1]) {
-		return null;
-	}
-
-	const value = Number(match[1]);
-	return Number.isFinite(value) && value > 0 ? value : null;
-}
-
-function createEmbedDocument(html: string) {
-	return `<!doctype html>
-<html>
-	<head>
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<style>
-			html, body { margin: 0; width: 100%; height: 100%; background: transparent; }
-			body { display: grid; place-items: center; overflow: hidden; }
-			iframe, embed, object, video { width: 100% !important; height: 100% !important; border: 0; }
-			blockquote { max-width: 100% !important; margin: 0 !important; }
-		</style>
-	</head>
-	<body>${html}</body>
-</html>`;
-}
-
-function formatHost(value: string) {
-	try {
-		return new URL(value).host;
-	} catch {
-		return value;
-	}
 }
 
 async function getErrorMessage(response: Response, fallback: string) {
 	const body = (await response.json().catch(() => null)) as {
-		error?: string;
+		error?: unknown;
 	} | null;
-	return body?.error ?? fallback;
+	if (typeof body?.error === "string") {
+		return body.error;
+	}
+	if (
+		typeof body?.error === "object" &&
+		body.error !== null &&
+		"message" in body.error &&
+		typeof body.error.message === "string"
+	) {
+		return body.error.message;
+	}
+
+	return fallback;
 }

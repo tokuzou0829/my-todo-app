@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { uuidv7 } from "uuidv7";
 import { z } from "zod";
@@ -23,6 +23,8 @@ const MAX_ATTACHMENT_COUNT = 4;
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 7_000;
 const MAX_HTML_METADATA_BYTES = 3_000_000;
+const DEFAULT_SCRAPS_PER_PAGE = 30;
+const MAX_SCRAPS_PER_PAGE = 100;
 
 const imageTypes = {
 	"image/jpeg": ".jpg",
@@ -42,6 +44,16 @@ const createScrapSchema = z.object({
 
 const scrapIdSchema = z.object({
 	id: z.string().uuid(),
+});
+
+const scrapsQuerySchema = z.object({
+	page: z.coerce.number().int().min(1).default(1),
+	perPage: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(MAX_SCRAPS_PER_PAGE)
+		.default(DEFAULT_SCRAPS_PER_PAGE),
 });
 
 type ScrapKind = "short_text" | "long_text" | "link" | "image";
@@ -66,14 +78,26 @@ type LinkMetadata = {
 };
 
 const app = createHonoApp()
-	.get("/", async (c) => {
+	.get("/", zValidator("query", scrapsQuerySchema), async (c) => {
 		const { user, isReadOnly } = await getReadableDataOwner(c);
+		const query = c.req.valid("query");
+		const pagination = {
+			page: query.page,
+			perPage: query.perPage,
+			total: 0,
+			pageCount: 0,
+		};
 
 		if (!user) {
-			return c.json({ scraps: [], owner: null, isReadOnly });
+			return c.json({ scraps: [], owner: null, isReadOnly, pagination });
 		}
 
 		const scraps = await getScraps(c.get("db"), user.id, {
+			publicOnly: isReadOnly,
+			limit: query.perPage,
+			offset: (query.page - 1) * query.perPage,
+		});
+		const total = await getScrapCount(c.get("db"), user.id, {
 			publicOnly: isReadOnly,
 		});
 
@@ -81,6 +105,11 @@ const app = createHonoApp()
 			scraps,
 			owner: toPublicDataOwner(user),
 			isReadOnly,
+			pagination: {
+				...pagination,
+				total,
+				pageCount: Math.ceil(total / query.perPage),
+			},
 		});
 	})
 	.get("/files/:id", async (c) => {
@@ -107,6 +136,31 @@ const app = createHonoApp()
 				"Cache-Control": "public, max-age=31536000, immutable",
 			},
 		});
+	})
+	.get("/:id", async (c) => {
+		const { id } = getScrapIdOrThrow(c.req.param("id"));
+		const db = c.get("db");
+		const currentUser = c.get("user");
+
+		const [targetScrap] = await db
+			.select()
+			.from(schema.scrap)
+			.where(eq(schema.scrap.id, id))
+			.limit(1);
+
+		if (!targetScrap || !canReadScrap(currentUser?.id, targetScrap)) {
+			throw new HTTPException(404, { message: "Scrap not found" });
+		}
+
+		const [scrap] = await getScraps(db, targetScrap.userId, {
+			scrapIds: [id],
+		});
+
+		if (!scrap) {
+			throw new HTTPException(404, { message: "Scrap not found" });
+		}
+
+		return c.json({ scrap });
 	})
 	.post("/", async (c) => {
 		const { user } = await getUserOrThrow(c);
@@ -259,9 +313,9 @@ const app = createHonoApp()
 
 		return c.json({ scrap }, 201);
 	})
-	.delete("/:id", zValidator("param", scrapIdSchema), async (c) => {
+	.delete("/:id", async (c) => {
 		const { user } = await getUserOrThrow(c);
-		const { id } = c.req.valid("param");
+		const { id } = getScrapIdOrThrow(c.req.param("id"));
 		const db = c.get("db");
 
 		const [targetScrap] = await db
@@ -303,21 +357,29 @@ const app = createHonoApp()
 async function getScraps(
 	db: Database,
 	userId: string,
-	options: { publicOnly?: boolean; scrapIds?: string[] } = {},
+	options: {
+		publicOnly?: boolean;
+		scrapIds?: string[];
+		limit?: number;
+		offset?: number;
+	} = {},
 ) {
-	const filters = [eq(schema.scrap.userId, userId)];
-	if (options.publicOnly) {
-		filters.push(eq(schema.scrap.isPrivate, false));
-	}
-	if (options.scrapIds?.length) {
-		filters.push(inArray(schema.scrap.id, options.scrapIds));
-	}
-
-	const scraps = await db
+	const filters = getScrapFilters(userId, options);
+	let scrapsQuery = db
 		.select()
 		.from(schema.scrap)
 		.where(and(...filters))
-		.orderBy(desc(schema.scrap.createdAt));
+		.orderBy(desc(schema.scrap.createdAt))
+		.$dynamic();
+
+	if (typeof options.limit === "number") {
+		scrapsQuery = scrapsQuery.limit(options.limit);
+	}
+	if (typeof options.offset === "number") {
+		scrapsQuery = scrapsQuery.offset(options.offset);
+	}
+
+	const scraps = await scrapsQuery;
 	const scrapIds = scraps.map((scrap) => scrap.id);
 
 	if (!scrapIds.length) {
@@ -371,6 +433,34 @@ async function getScraps(
 	});
 }
 
+async function getScrapCount(
+	db: Database,
+	userId: string,
+	options: { publicOnly?: boolean; scrapIds?: string[] } = {},
+) {
+	const [row] = await db
+		.select({ value: count() })
+		.from(schema.scrap)
+		.where(and(...getScrapFilters(userId, options)));
+
+	return row?.value ?? 0;
+}
+
+function getScrapFilters(
+	userId: string,
+	options: { publicOnly?: boolean; scrapIds?: string[] },
+) {
+	const filters = [eq(schema.scrap.userId, userId)];
+	if (options.publicOnly) {
+		filters.push(eq(schema.scrap.isPrivate, false));
+	}
+	if (options.scrapIds?.length) {
+		filters.push(inArray(schema.scrap.id, options.scrapIds));
+	}
+
+	return filters;
+}
+
 async function getReadableScrapFile(c: Context, fileId: string) {
 	const currentUser = c.get("user");
 	const [attachmentMatch] = await c
@@ -418,7 +508,23 @@ function canReadScrapFile(
 	currentUserId: string | undefined,
 	scrap: typeof schema.scrap.$inferSelect,
 ) {
+	return canReadScrap(currentUserId, scrap);
+}
+
+function canReadScrap(
+	currentUserId: string | undefined,
+	scrap: typeof schema.scrap.$inferSelect,
+) {
 	return scrap.userId === currentUserId || !scrap.isPrivate;
+}
+
+function getScrapIdOrThrow(value: string) {
+	const parsed = scrapIdSchema.safeParse({ id: value });
+	if (!parsed.success) {
+		throw new HTTPException(404, { message: "Scrap not found" });
+	}
+
+	return parsed.data;
 }
 
 function getFormString(formData: FormData, key: string) {
