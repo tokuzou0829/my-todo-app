@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { setup } from "@/tests/vitest.helper";
 import app from "./subscriptions";
 
 const { createUser, mock } = await setup();
 
 describe("/routes/subscriptions", () => {
+	afterEach(() => {
+		delete process.env.IS_PUBLIC_FIRST_USER;
+	});
+
 	it("未ログイン時は最初のユーザーの公開用データを取得できる", async () => {
+		process.env.IS_PUBLIC_FIRST_USER = "true";
 		await createUser();
 		const publicCreateResponse = await app.request("/", {
 			method: "POST",

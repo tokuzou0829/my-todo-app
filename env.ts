@@ -6,6 +6,11 @@ const booleanString = z
 	.default("true")
 	.transform((value) => value === "true");
 
+const disabledByDefaultBooleanString = z
+	.enum(["true", "false"])
+	.default("false")
+	.transform((value) => value === "true");
+
 const staticEnv = z.object({
 	NODE_ENV: z
 		.union([
@@ -21,6 +26,7 @@ const staticEnv = z.object({
 	AUTH_SHOW_LOGIN_BUTTON: booleanString,
 	AUTH_SHOW_SIGNUP_BUTTON: booleanString,
 	AUTH_SIGNUP_ENDPOINT_ENABLED: booleanString,
+	IS_PUBLIC_FIRST_USER: disabledByDefaultBooleanString,
 
 	//site
 	SITE_NAME: z.string().min(1).default("Todo App"),

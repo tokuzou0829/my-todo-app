@@ -2,6 +2,7 @@ import { asc } from "drizzle-orm";
 
 import * as schema from "@/db/schema";
 import type { auth } from "@/lib/auth";
+import { isPublicFirstUserEnabled } from "@/lib/public-data-settings";
 import type { Context } from "@/server/types";
 
 type User = typeof auth.$Infer.Session.user;
@@ -15,6 +16,13 @@ export async function getReadableDataOwner(c: Context) {
 		return {
 			user: currentUser,
 			isReadOnly: false,
+		} as const;
+	}
+
+	if (!isPublicFirstUserEnabled()) {
+		return {
+			user: null,
+			isReadOnly: true,
 		} as const;
 	}
 

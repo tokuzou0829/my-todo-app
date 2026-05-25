@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import * as schema from "@/db/schema";
 import type { Database } from "@/lib/db";
+import { isPublicFirstUserEnabled } from "@/lib/public-data-settings";
 import { createHonoApp } from "@/server/create-app";
 import {
 	createFileRepository,
@@ -530,7 +531,15 @@ function canReadScrap(
 	currentUserId: string | undefined,
 	scrap: typeof schema.scrap.$inferSelect,
 ) {
-	return scrap.userId === currentUserId || !scrap.isPrivate;
+	if (scrap.userId === currentUserId) {
+		return true;
+	}
+
+	if (!currentUserId && !isPublicFirstUserEnabled()) {
+		return false;
+	}
+
+	return !scrap.isPrivate;
 }
 
 function getScrapIdOrThrow(value: string) {

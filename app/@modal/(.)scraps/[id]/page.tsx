@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { ScrapDetailModal } from "@/components/scrap-detail-modal";
 import type { Scrap, ScrapKind } from "@/components/scrap-types";
 import * as schema from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { isPublicFirstUserEnabled } from "@/lib/public-data-settings";
 import { extractUuid } from "@/lib/uuid";
 
 export default async function ScrapModalPage({
@@ -19,6 +20,11 @@ export default async function ScrapModalPage({
 	const session = await auth.api.getSession({
 		headers: await headers(),
 	});
+
+	if (!session && !isPublicFirstUserEnabled()) {
+		redirect("/login");
+	}
+
 	const scrap = await getReadableScrap(scrapId, session?.user.id);
 
 	if (!scrap) {
@@ -37,7 +43,7 @@ async function getReadableScrap(scrapId: string, currentUserId?: string) {
 		.where(eq(schema.scrap.id, scrapId))
 		.limit(1);
 
-	if (!scrap || (scrap.userId !== currentUserId && scrap.isPrivate)) {
+	if (!scrap || !canReadScrap(currentUserId, scrap)) {
 		return null;
 	}
 
@@ -92,4 +98,19 @@ async function getReadableScrap(scrapId: string, currentUserId?: string) {
 			url: `/api/scraps/files/${attachment.fileId}`,
 		})),
 	} satisfies Scrap;
+}
+
+function canReadScrap(
+	currentUserId: string | undefined,
+	scrap: typeof schema.scrap.$inferSelect,
+) {
+	if (scrap.userId === currentUserId) {
+		return true;
+	}
+
+	if (!currentUserId && !isPublicFirstUserEnabled()) {
+		return false;
+	}
+
+	return !scrap.isPrivate;
 }

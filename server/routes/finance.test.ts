@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { setup } from "@/tests/vitest.helper";
 
@@ -7,7 +7,12 @@ import app from "./finance";
 const { createUser, mock } = await setup();
 
 describe("/routes/finance", () => {
+	afterEach(() => {
+		delete process.env.IS_PUBLIC_FIRST_USER;
+	});
+
 	it("未ログイン時は非公開項目の種別と金額だけを取得できる", async () => {
+		process.env.IS_PUBLIC_FIRST_USER = "true";
 		await createUser();
 		const publicCreateResponse = await app.request("/entries", {
 			method: "POST",

@@ -1,5 +1,5 @@
 import { uuidv7 } from "uuidv7";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import * as schema from "@/db/schema";
 import { setup } from "@/tests/vitest.helper";
@@ -9,6 +9,10 @@ import app from "./scraps";
 const { createUser, db, mock } = await setup();
 
 describe("/routes/scraps", () => {
+	afterEach(() => {
+		delete process.env.IS_PUBLIC_FIRST_USER;
+	});
+
 	it("ログイン時はスクラップを検索できる", async () => {
 		const user = await createUser();
 		await createScrap({
@@ -36,6 +40,7 @@ describe("/routes/scraps", () => {
 	});
 
 	it("未ログイン時は公開スクラップだけ検索できる", async () => {
+		process.env.IS_PUBLIC_FIRST_USER = "true";
 		const user = await createUser();
 		await createScrap({
 			userId: user.id,
@@ -71,6 +76,32 @@ describe("/routes/scraps", () => {
 			isPrivate: false,
 		});
 		expect(json.pagination.total).toBe(1);
+	});
+
+	it("未ログイン時は公開設定が無効なら公開スクラップも取得できない", async () => {
+		const user = await createUser();
+		const scrapId = await createScrap({
+			userId: user.id,
+			title: "公開 React メモ",
+			createdAt: new Date("2026-01-03"),
+		});
+
+		mock.authMiddleware.mockImplementation(async (c, next) => {
+			c.set("user", null);
+			c.set("session", null);
+			await next();
+		});
+
+		const listResponse = await app.request("/?q=React");
+		const listJson = await listResponse.json();
+		const detailResponse = await app.request(`/${scrapId}`);
+
+		expect(listResponse.status).toBe(200);
+		expect(listJson.owner).toBeNull();
+		expect(listJson.isReadOnly).toBe(true);
+		expect(listJson.scraps).toEqual([]);
+		expect(listJson.pagination.total).toBe(0);
+		expect(detailResponse.status).toBe(404);
 	});
 
 	it("検索文字列の%はワイルドカードとして扱う", async () => {
@@ -110,8 +141,9 @@ async function createScrap({
 	isPrivate?: boolean;
 	createdAt: Date;
 }) {
+	const id = uuidv7();
 	await db.insert(schema.scrap).values({
-		id: uuidv7(),
+		id,
 		userId,
 		title,
 		body,
@@ -121,4 +153,6 @@ async function createScrap({
 		createdAt,
 		updatedAt: createdAt,
 	});
+
+	return id;
 }
