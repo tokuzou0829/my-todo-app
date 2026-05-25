@@ -27,7 +27,7 @@ const SCRAPS_PER_PAGE = 30;
 
 export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const [scraps, setScraps] = useState<Scrap[]>([]);
-	const [request, setRequest] = useState({ page: 1, reloadKey: 0 });
+	const [request, setRequest] = useState({ page: 1, reloadKey: 0, search: "" });
 	const [pagination, setPagination] = useState({
 		page: 1,
 		perPage: SCRAPS_PER_PAGE,
@@ -54,6 +54,7 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 				query: {
 					page: String(queryPage),
 					perPage: String(SCRAPS_PER_PAGE),
+					...(request.search ? { q: request.search } : {}),
 				},
 			});
 
@@ -172,6 +173,21 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 		window.scrollTo({ top: 0, behavior: "smooth" });
 	};
 
+	const handleSearchChange = (value: string) => {
+		setRequest((current) => {
+			if (current.search === value && current.page === 1) {
+				return current;
+			}
+
+			return { ...current, search: value, page: 1 };
+		});
+	};
+
+	const handleTitleChange = (value: string) => {
+		setTitle(value);
+		handleSearchChange(value);
+	};
+
 	const handleImagesChange = (files: FileList | null) => {
 		const selectedImages = Array.from(files ?? []);
 		setImages((current) => {
@@ -196,6 +212,7 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 		setImages([]);
 		setIsPrivate(false);
 		setFileInputKey((current) => current + 1);
+		handleSearchChange("");
 	};
 
 	return (
@@ -205,7 +222,7 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 					<ScrapComposer
 						onSubmit={handleCreate}
 						title={title}
-						onTitleChange={setTitle}
+						onTitleChange={handleTitleChange}
 						body={body}
 						onBodyChange={setBody}
 						images={images}
@@ -217,6 +234,12 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 						isSaving={isSaving}
 					/>
 				)}
+				{isReadOnly ? (
+					<ScrapSearchInput
+						value={request.search}
+						onChange={handleSearchChange}
+					/>
+				) : null}
 
 				{error ? (
 					<p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700 text-sm">
@@ -250,16 +273,43 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 				) : (
 					<div className="rounded-2xl border border-primary/40 border-dashed bg-primary/5 px-4 py-12 text-center">
 						<p className="font-semibold text-foreground text-sm">
-							まだスクラップはありません
+							{request.search
+								? "検索に一致するスクラップはありません"
+								: "まだスクラップはありません"}
 						</p>
 						<p className="mt-1 text-muted-foreground text-sm">
-							{isReadOnly
-								? "公開されているスクラップはありません。"
-								: "短文、記事リンク、画像メモを残していきましょう。"}
+							{request.search
+								? "別のキーワードで検索してみてください。"
+								: isReadOnly
+									? "公開されているスクラップはありません。"
+									: "短文、記事リンク、画像メモを残していきましょう。"}
 						</p>
 					</div>
 				)}
 			</section>
+		</div>
+	);
+}
+
+function ScrapSearchInput({
+	value,
+	onChange,
+}: {
+	value: string;
+	onChange: (value: string) => void;
+}) {
+	return (
+		<div className="rounded-3xl border border-border bg-background shadow-sm transition focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+			<Label htmlFor="scrap-search" className="sr-only">
+				タイトル / URL / 検索
+			</Label>
+			<Input
+				id="scrap-search"
+				value={value}
+				onChange={(event) => onChange(event.target.value)}
+				placeholder="検索"
+				className="h-12 border-0 bg-transparent px-4 text-base shadow-none focus-visible:ring-0"
+			/>
 		</div>
 	);
 }
@@ -391,7 +441,7 @@ function ScrapComposer({
 		<form onSubmit={onSubmit} className="space-y-3">
 			<div className="overflow-hidden rounded-3xl border border-border bg-background shadow-sm transition focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
 				<Label htmlFor="scrap-title" className="sr-only">
-					タイトル / URL
+					タイトル / URL / 検索
 				</Label>
 				<Input
 					id="scrap-title"
@@ -411,7 +461,7 @@ function ScrapComposer({
 						event.preventDefault();
 						bodyRef.current?.focus();
 					}}
-					placeholder="タイトル、URL"
+					placeholder="タイトル、URLまたは検索"
 					className="h-12 border-0 bg-transparent px-4 text-base shadow-none focus-visible:ring-0"
 				/>
 				<Label htmlFor="scrap-body" className="sr-only">

@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { uuidv7 } from "uuidv7";
 import { z } from "zod";
@@ -54,6 +54,7 @@ const scrapsQuerySchema = z.object({
 		.min(1)
 		.max(MAX_SCRAPS_PER_PAGE)
 		.default(DEFAULT_SCRAPS_PER_PAGE),
+	q: z.string().max(500).default(""),
 });
 
 type ScrapKind = "short_text" | "long_text" | "link" | "image";
@@ -94,11 +95,13 @@ const app = createHonoApp()
 
 		const scraps = await getScraps(c.get("db"), user.id, {
 			publicOnly: isReadOnly,
+			search: query.q,
 			limit: query.perPage,
 			offset: (query.page - 1) * query.perPage,
 		});
 		const total = await getScrapCount(c.get("db"), user.id, {
 			publicOnly: isReadOnly,
+			search: query.q,
 		});
 
 		return c.json({
@@ -360,6 +363,7 @@ async function getScraps(
 	options: {
 		publicOnly?: boolean;
 		scrapIds?: string[];
+		search?: string;
 		limit?: number;
 		offset?: number;
 	} = {},
@@ -436,7 +440,7 @@ async function getScraps(
 async function getScrapCount(
 	db: Database,
 	userId: string,
-	options: { publicOnly?: boolean; scrapIds?: string[] } = {},
+	options: { publicOnly?: boolean; scrapIds?: string[]; search?: string } = {},
 ) {
 	const [row] = await db
 		.select({ value: count() })
@@ -448,7 +452,7 @@ async function getScrapCount(
 
 function getScrapFilters(
 	userId: string,
-	options: { publicOnly?: boolean; scrapIds?: string[] },
+	options: { publicOnly?: boolean; scrapIds?: string[]; search?: string },
 ) {
 	const filters = [eq(schema.scrap.userId, userId)];
 	if (options.publicOnly) {
@@ -456,6 +460,17 @@ function getScrapFilters(
 	}
 	if (options.scrapIds?.length) {
 		filters.push(inArray(schema.scrap.id, options.scrapIds));
+	}
+	if (options.search) {
+		const pattern = `%${options.search}%`;
+		const searchFilter = or(
+			ilike(schema.scrap.title, pattern),
+			ilike(schema.scrap.body, pattern),
+			ilike(schema.scrap.sourceUrl, pattern),
+		);
+		if (searchFilter) {
+			filters.push(searchFilter);
+		}
 	}
 
 	return filters;
