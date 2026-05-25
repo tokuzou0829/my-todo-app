@@ -1,7 +1,12 @@
+import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
+import { notFound } from "next/navigation";
 
 import { ScrapDetailModal } from "@/components/scrap-detail-modal";
+import type { Scrap, ScrapKind } from "@/components/scrap-types";
+import * as schema from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { extractUuid } from "@/lib/uuid";
 
 export default async function ScrapModalPage({
@@ -14,11 +19,77 @@ export default async function ScrapModalPage({
 	const session = await auth.api.getSession({
 		headers: await headers(),
 	});
+	const scrap = await getReadableScrap(scrapId, session?.user.id);
+
+	if (!scrap) {
+		notFound();
+	}
 
 	return (
-		<ScrapDetailModal
-			scrapId={scrapId}
-			currentUserId={session?.user.id ?? null}
-		/>
+		<ScrapDetailModal scrap={scrap} currentUserId={session?.user.id ?? null} />
 	);
+}
+
+async function getReadableScrap(scrapId: string, currentUserId?: string) {
+	const [scrap] = await db
+		.select()
+		.from(schema.scrap)
+		.where(eq(schema.scrap.id, scrapId))
+		.limit(1);
+
+	if (!scrap || (scrap.userId !== currentUserId && scrap.isPrivate)) {
+		return null;
+	}
+
+	const [preview] = await db
+		.select()
+		.from(schema.scrapLinkPreview)
+		.where(eq(schema.scrapLinkPreview.scrapId, scrap.id))
+		.limit(1);
+	const attachments = await db
+		.select()
+		.from(schema.scrapAttachment)
+		.where(eq(schema.scrapAttachment.scrapId, scrap.id))
+		.orderBy(schema.scrapAttachment.position);
+
+	return {
+		id: scrap.id,
+		userId: scrap.userId,
+		title: scrap.title,
+		body: scrap.body,
+		kind: scrap.kind as ScrapKind,
+		sourceUrl: scrap.sourceUrl,
+		isPrivate: scrap.isPrivate,
+		createdAt: scrap.createdAt.toISOString(),
+		updatedAt: scrap.updatedAt.toISOString(),
+		linkPreview: preview
+			? {
+					id: preview.id,
+					scrapId: preview.scrapId,
+					url: preview.url,
+					title: preview.title,
+					description: preview.description,
+					siteName: preview.siteName,
+					providerName: preview.providerName,
+					authorName: preview.authorName,
+					html: preview.html,
+					imageFileId: preview.imageFileId,
+					imageAlt: preview.imageAlt,
+					metadataSource: preview.metadataSource,
+					createdAt: preview.createdAt.toISOString(),
+					imageUrl: preview.imageFileId
+						? `/api/scraps/files/${preview.imageFileId}`
+						: null,
+				}
+			: null,
+		attachments: attachments.map((attachment) => ({
+			id: attachment.id,
+			scrapId: attachment.scrapId,
+			fileId: attachment.fileId,
+			altText: attachment.altText,
+			position: attachment.position,
+			createdAt: attachment.createdAt.toISOString(),
+			url: `/api/scraps/files/${attachment.fileId}`,
+		})),
+	} satisfies Scrap;
 }

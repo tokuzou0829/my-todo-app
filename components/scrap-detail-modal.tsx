@@ -1,85 +1,28 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { dispatchScrapDeleted, ScrapDetail } from "@/components/scrap-detail";
-import type { Scrap, ScrapResponse } from "@/components/scrap-types";
+import type { Scrap } from "@/components/scrap-types";
 import { Button } from "@/components/ui/button";
-import {
-	Dialog,
-	DialogContent,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { apiClient } from "@/lib/api-client";
-import { extractUuid } from "@/lib/uuid";
 
 export function ScrapDetailModal({
-	scrapId,
+	scrap,
 	currentUserId,
 }: {
-	scrapId?: string;
+	scrap: Scrap;
 	currentUserId: string | null;
 }) {
 	const router = useRouter();
-	const params = useParams<{ id?: string | string[] }>();
-	const rawScrapId = scrapId ?? getSingleParam(params.id);
-	const resolvedScrapId = rawScrapId ? extractUuid(rawScrapId) : null;
-	const [scrap, setScrap] = useState<Scrap | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [isLoading, setIsLoading] = useState(true);
 	const [isDeleting, setIsDeleting] = useState(false);
-	const canDelete = scrap?.userId === currentUserId;
-
-	useEffect(() => {
-		let ignore = false;
-
-		const loadScrap = async () => {
-			if (!resolvedScrapId) {
-				setError("スクラップの取得に失敗しました");
-				setIsLoading(false);
-				return;
-			}
-
-			setIsLoading(true);
-			setError(null);
-
-			const response = await apiClient.api.scraps[":id"].$get({
-				param: { id: resolvedScrapId },
-			});
-
-			if (!response.ok) {
-				if (!ignore) {
-					setError(
-						await getErrorMessage(response, "スクラップの取得に失敗しました"),
-					);
-					setIsLoading(false);
-				}
-				return;
-			}
-
-			const json = (await response.json()) as ScrapResponse;
-			if (!ignore) {
-				setScrap(json.scrap);
-				setIsLoading(false);
-			}
-		};
-
-		void loadScrap();
-
-		return () => {
-			ignore = true;
-		};
-	}, [resolvedScrapId]);
+	const canDelete = scrap.userId === currentUserId;
 
 	const handleDelete = async () => {
-		if (!scrap) {
-			return;
-		}
-
 		setIsDeleting(true);
 		setError(null);
 
@@ -104,18 +47,7 @@ export function ScrapDetailModal({
 		<Dialog open onOpenChange={(open) => !open && router.back()}>
 			<DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden bg-background p-0 sm:max-w-5xl">
 				<div className="max-h-[calc(90vh-4.5rem)] overflow-y-auto overscroll-contain bg-background p-6">
-					{scrap ? (
-						<ScrapDetail scrap={scrap} isDialog />
-					) : (
-						<DialogHeader>
-							<DialogTitle>スクラップ詳細</DialogTitle>
-						</DialogHeader>
-					)}
-					{isLoading ? (
-						<p className="rounded-2xl border border-border border-dashed px-4 py-10 text-center text-muted-foreground text-sm">
-							スクラップを読み込んでいます...
-						</p>
-					) : null}
+					<ScrapDetail scrap={scrap} isDialog />
 					{error ? (
 						<p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700 text-sm">
 							{error}
@@ -138,10 +70,6 @@ export function ScrapDetailModal({
 			</DialogContent>
 		</Dialog>
 	);
-}
-
-function getSingleParam(value: string | string[] | undefined) {
-	return Array.isArray(value) ? value[0] : value;
 }
 
 async function getErrorMessage(response: Response, fallback: string) {

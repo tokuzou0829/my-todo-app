@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { PageTransition } from "@/components/page-transition";
 import { SiteHeader } from "@/components/site-header";
 import {
 	shouldShowLoginButton,
@@ -45,7 +46,9 @@ export default function RootLayout({
 					showSignupButton={shouldShowSignupButton()}
 				/>
 				<main className="w-full px-6 pb-10 pt-24 transition-[padding] duration-300 ease-out md:pl-24 md:pr-10 md:pt-10">
-					<div className="mx-auto w-full max-w-6xl">{children}</div>
+					<div className="mx-auto w-full max-w-6xl">
+						<PageTransition>{children}</PageTransition>
+					</div>
 				</main>
 				{modal}
 			</body>
