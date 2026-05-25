@@ -43,7 +43,9 @@ export function ScrapDetail({
 	const Icon = kindIcons[scrap.kind];
 	const hasMedia = scrap.linkPreview !== null || scrap.attachments.length > 0;
 	const title = isDialog ? (
-		<DialogTitle className="text-2xl leading-tight">{scrap.title}</DialogTitle>
+		<DialogTitle className="break-all text-2xl leading-tight">
+			{scrap.title}
+		</DialogTitle>
 	) : (
 		<h1 className="font-semibold text-2xl leading-tight">{scrap.title}</h1>
 	);
