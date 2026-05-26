@@ -8,21 +8,13 @@ This guide explains how to run My Todo App in a local development environment.
 - pnpm `10.28.1` as defined in `package.json`
 - Docker for local PostgreSQL
 
-## 1. Enable pnpm
-
-```bash
-pnpm setup
-```
-
-If pnpm is already available, you can skip this step.
-
-## 2. Install Dependencies
+## 1. Install Dependencies
 
 ```bash
 pnpm i
 ```
 
-## 3. Create Local Environment Variables
+## 2. Create Local Environment Variables
 
 ```bash
 cp .env.example .env
@@ -40,7 +32,7 @@ Important variables:
 
 For local UI and API development, the placeholder R2 and VAPID values from `.env.example` are enough unless you need to exercise real storage or push notification delivery.
 
-## 4. Start the Development Server
+## 3. Start the Development Server
 
 ```bash
 pnpm dev
