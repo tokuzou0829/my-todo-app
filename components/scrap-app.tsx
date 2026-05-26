@@ -3,7 +3,13 @@
 import { ExternalLink, Lock, Paperclip, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import {
+	type FormEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,15 +25,18 @@ import {
 	PaginationNext,
 	PaginationPrevious,
 } from "@/components/ui/pagination";
+import { SpinnerCustom } from "@/components/ui/spinner";
 import { apiClient } from "@/lib/api-client";
 import { formatDate, formatHost, kindIcons, kindLabels } from "./scrap-detail";
 import type { Scrap, ScrapsResponse } from "./scrap-types";
 
 const SCRAPS_PER_PAGE = 30;
+const SEARCH_DEBOUNCE_MS = 250;
 
 export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const [scraps, setScraps] = useState<Scrap[]>([]);
 	const [request, setRequest] = useState({ page: 1, reloadKey: 0, search: "" });
+	const [searchInput, setSearchInput] = useState("");
 	const [pagination, setPagination] = useState({
 		page: 1,
 		perPage: SCRAPS_PER_PAGE,
@@ -41,7 +50,18 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const [isPrivate, setIsPrivate] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const [hasFinishedInitialLoad, setHasFinishedInitialLoad] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+
+	const commitSearch = useCallback((value: string) => {
+		setRequest((current) => {
+			if (current.search === value && current.page === 1) {
+				return current;
+			}
+
+			return { ...current, search: value, page: 1 };
+		});
+	}, []);
 
 	useEffect(() => {
 		let ignore = false;
@@ -63,6 +83,7 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 					setError(
 						await getErrorMessage(response, "スクラップの取得に失敗しました"),
 					);
+					setHasFinishedInitialLoad(true);
 					setIsLoading(false);
 				}
 				return;
@@ -84,6 +105,7 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 
 				setScraps(json.scraps);
 				setPagination(json.pagination);
+				setHasFinishedInitialLoad(true);
 				setIsLoading(false);
 			}
 		};
@@ -94,6 +116,18 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 			ignore = true;
 		};
 	}, [request]);
+
+	useEffect(() => {
+		if (searchInput === request.search || searchInput === "") {
+			return;
+		}
+
+		const timeoutId = window.setTimeout(() => {
+			commitSearch(searchInput);
+		}, SEARCH_DEBOUNCE_MS);
+
+		return () => window.clearTimeout(timeoutId);
+	}, [commitSearch, searchInput, request.search]);
 
 	useEffect(() => {
 		const handleScrapDeleted = (event: Event) => {
@@ -174,13 +208,15 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	};
 
 	const handleSearchChange = (value: string) => {
-		setRequest((current) => {
-			if (current.search === value && current.page === 1) {
-				return current;
-			}
+		setSearchInput(value);
 
-			return { ...current, search: value, page: 1 };
-		});
+		if (value === "") {
+			commitSearch("");
+		}
+	};
+
+	const handleSearchCommit = () => {
+		commitSearch(searchInput);
 	};
 
 	const handleTitleChange = (value: string) => {
@@ -212,8 +248,14 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 		setImages([]);
 		setIsPrivate(false);
 		setFileInputKey((current) => current + 1);
-		handleSearchChange("");
+		setSearchInput("");
+		commitSearch("");
 	};
+
+	const showInitialLoading = isLoading && !hasFinishedInitialLoad;
+	const showSearchSpinner =
+		(searchInput !== request.search || isLoading) && hasFinishedInitialLoad;
+	const hasSearchText = searchInput.length > 0;
 
 	return (
 		<div className="space-y-8">
@@ -223,6 +265,7 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 						onSubmit={handleCreate}
 						title={title}
 						onTitleChange={handleTitleChange}
+						onTitleSearchCommit={handleSearchCommit}
 						body={body}
 						onBodyChange={setBody}
 						images={images}
@@ -232,12 +275,15 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 						isPrivate={isPrivate}
 						onPrivateChange={setIsPrivate}
 						isSaving={isSaving}
+						isSearching={showSearchSpinner}
 					/>
 				)}
 				{isReadOnly ? (
 					<ScrapSearchInput
-						value={request.search}
+						value={searchInput}
 						onChange={handleSearchChange}
+						onCommit={handleSearchCommit}
+						isLoading={showSearchSpinner}
 					/>
 				) : null}
 
@@ -247,7 +293,7 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 					</p>
 				) : null}
 
-				{isLoading ? (
+				{showInitialLoading ? (
 					<p className="rounded-2xl border border-border border-dashed px-4 py-10 text-center text-muted-foreground text-sm">
 						スクラップを読み込んでいます...
 					</p>
@@ -273,12 +319,12 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 				) : (
 					<div className="rounded-2xl border border-primary/40 border-dashed bg-primary/5 px-4 py-12 text-center">
 						<p className="font-semibold text-foreground text-sm">
-							{request.search
+							{hasSearchText
 								? "検索に一致するスクラップはありません"
 								: "まだスクラップはありません"}
 						</p>
 						<p className="mt-1 text-muted-foreground text-sm">
-							{request.search
+							{hasSearchText
 								? "別のキーワードで検索してみてください。"
 								: isReadOnly
 									? "公開されているスクラップはありません。"
@@ -294,12 +340,16 @@ export function ScrapApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 function ScrapSearchInput({
 	value,
 	onChange,
+	onCommit,
+	isLoading,
 }: {
 	value: string;
 	onChange: (value: string) => void;
+	onCommit: () => void;
+	isLoading: boolean;
 }) {
 	return (
-		<div className="rounded-3xl border border-border bg-background shadow-sm transition focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+		<div className="relative rounded-3xl border border-border bg-background shadow-sm transition focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
 			<Label htmlFor="scrap-search" className="sr-only">
 				タイトル / URL / 検索
 			</Label>
@@ -307,9 +357,24 @@ function ScrapSearchInput({
 				id="scrap-search"
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
+				onBlur={onCommit}
+				onKeyDown={(event) => {
+					if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+						return;
+					}
+
+					event.preventDefault();
+					onCommit();
+				}}
 				placeholder="検索"
-				className="h-12 border-0 bg-transparent px-4 text-base shadow-none focus-visible:ring-0"
+				className="h-12 border-0 bg-transparent px-4 pr-12 text-base shadow-none focus-visible:ring-0"
 			/>
+			{isLoading ? (
+				<SpinnerCustom
+					className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-4 text-muted-foreground"
+					iconClassName="size-5"
+				/>
+			) : null}
 		</div>
 	);
 }
@@ -412,6 +477,7 @@ function ScrapComposer({
 	onSubmit,
 	title,
 	onTitleChange,
+	onTitleSearchCommit,
 	body,
 	onBodyChange,
 	images,
@@ -421,10 +487,12 @@ function ScrapComposer({
 	isPrivate,
 	onPrivateChange,
 	isSaving,
+	isSearching,
 }: {
 	onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	title: string;
 	onTitleChange: (value: string) => void;
+	onTitleSearchCommit: () => void;
 	body: string;
 	onBodyChange: (value: string) => void;
 	images: File[];
@@ -434,36 +502,48 @@ function ScrapComposer({
 	isPrivate: boolean;
 	onPrivateChange: (value: boolean) => void;
 	isSaving: boolean;
+	isSearching: boolean;
 }) {
 	const bodyRef = useRef<HTMLTextAreaElement>(null);
 
 	return (
 		<form onSubmit={onSubmit} className="space-y-3">
 			<div className="overflow-hidden rounded-3xl border border-border bg-background shadow-sm transition focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
-				<Label htmlFor="scrap-title" className="sr-only">
-					タイトル / URL / 検索
-				</Label>
-				<Input
-					id="scrap-title"
-					value={title}
-					onChange={(event) => onTitleChange(event.target.value)}
-					onKeyDown={(event) => {
-						if (event.key !== "Enter" || event.nativeEvent.isComposing) {
-							return;
-						}
+				<div className="relative">
+					<Label htmlFor="scrap-title" className="sr-only">
+						タイトル / URL / 検索
+					</Label>
+					<Input
+						id="scrap-title"
+						value={title}
+						onChange={(event) => onTitleChange(event.target.value)}
+						onBlur={onTitleSearchCommit}
+						onKeyDown={(event) => {
+							if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+								return;
+							}
 
-						if (event.metaKey || event.ctrlKey) {
+							onTitleSearchCommit();
+
+							if (event.metaKey || event.ctrlKey) {
+								event.preventDefault();
+								event.currentTarget.form?.requestSubmit();
+								return;
+							}
+
 							event.preventDefault();
-							event.currentTarget.form?.requestSubmit();
-							return;
-						}
-
-						event.preventDefault();
-						bodyRef.current?.focus();
-					}}
-					placeholder="タイトル、URLまたは検索"
-					className="h-12 border-0 bg-transparent px-4 text-base shadow-none focus-visible:ring-0"
-				/>
+							bodyRef.current?.focus();
+						}}
+						placeholder="タイトル、URLまたは検索"
+						className="h-12 border-0 bg-transparent px-4 pr-12 text-base shadow-none focus-visible:ring-0"
+					/>
+					{isSearching ? (
+						<SpinnerCustom
+							className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-4 text-muted-foreground"
+							iconClassName="size-5"
+						/>
+					) : null}
+				</div>
 				<Label htmlFor="scrap-body" className="sr-only">
 					本文 / コメント
 				</Label>
