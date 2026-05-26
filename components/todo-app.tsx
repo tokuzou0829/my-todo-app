@@ -527,6 +527,7 @@ export function TodoApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 									<Input
 										id="todo-due-date"
 										type="date"
+										className="mobile-date-input"
 										value={draftDueDate}
 										onChange={(event) => {
 											setDraftDueDate(event.target.value);
@@ -546,6 +547,7 @@ export function TodoApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 									<Input
 										id="todo-due-time"
 										type="time"
+										className="mobile-time-input"
 										value={draftDueTime}
 										onChange={(event) => setDraftDueTime(event.target.value)}
 										disabled={!draftDueDate}

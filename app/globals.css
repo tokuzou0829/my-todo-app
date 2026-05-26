@@ -67,19 +67,22 @@ body {
 	font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-.mobile-date-input {
+.mobile-date-input,
+.mobile-time-input {
 	max-width: 100%;
 	min-width: 0;
 	-webkit-appearance: none;
 	appearance: none;
 }
 
-.mobile-date-input::-webkit-date-and-time-value {
+.mobile-date-input::-webkit-date-and-time-value,
+.mobile-time-input::-webkit-date-and-time-value {
 	min-width: 0;
 	text-align: left;
 }
 
-.mobile-date-input::-webkit-calendar-picker-indicator {
+.mobile-date-input::-webkit-calendar-picker-indicator,
+.mobile-time-input::-webkit-calendar-picker-indicator {
 	margin-left: 0;
 }
 
