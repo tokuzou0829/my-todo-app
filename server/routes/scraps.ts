@@ -18,6 +18,10 @@ import {
 	getReadableDataOwner,
 	toPublicDataOwner,
 } from "@/server/routes/public-data-owner";
+import {
+	extractYouTubeMetadata,
+	normalizeYouTubeUrl,
+} from "@/server/routes/scrap-youtube-metadata";
 import type { Context } from "@/server/types";
 
 const MAX_ATTACHMENT_COUNT = 4;
@@ -637,6 +641,7 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 		const oembed = oembedUrl ? await fetchOembed(oembedUrl) : null;
 		const openGraph = extractNamedMetadata(html, "property", "og:");
 		const twitter = extractNamedMetadata(html, "name", "twitter:");
+		const youtube = extractYouTubeMetadata(html, normalizedUrl);
 		const descriptionMetadata = extractNamedMetadata(
 			html,
 			"name",
@@ -647,12 +652,14 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 			oembed?.title,
 			openGraph["og:title"],
 			twitter["twitter:title"],
+			youtube?.title,
 			htmlTitle,
 		);
 		const description = firstString(
 			oembed?.description,
 			openGraph["og:description"],
 			twitter["twitter:description"],
+			youtube?.description,
 			descriptionMetadata.description,
 		);
 		const imageUrl = firstString(
@@ -660,6 +667,7 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 			openGraph["og:image"],
 			openGraph["og:image:url"],
 			twitter["twitter:image"],
+			youtube?.imageUrl,
 		);
 		const source = oembed?.html
 			? "oembed"
@@ -667,7 +675,7 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 				? "open_graph"
 				: twitter["twitter:title"] || twitter["twitter:image"]
 					? "twitter_card"
-					: htmlTitle
+					: youtube?.title || htmlTitle
 						? "html"
 						: "none";
 
@@ -676,8 +684,8 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 			title,
 			description,
 			siteName: firstString(openGraph["og:site_name"]),
-			providerName: firstString(oembed?.provider_name),
-			authorName: firstString(oembed?.author_name),
+			providerName: firstString(oembed?.provider_name, youtube?.providerName),
+			authorName: firstString(oembed?.author_name, youtube?.authorName),
 			html: firstString(oembed?.html),
 			imageUrl: imageUrl ? resolveMaybeUrl(imageUrl, normalizedUrl) : null,
 			imageAlt: firstString(
@@ -690,6 +698,7 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 				oembedUrl,
 				openGraph,
 				twitter,
+				youtube,
 				descriptionMetadata,
 				htmlTitle,
 				contentType,
@@ -705,53 +714,6 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 
 function normalizeScrapUrl(url: URL) {
 	return normalizeYouTubeUrl(url) ?? url;
-}
-
-function normalizeYouTubeUrl(url: URL) {
-	const host = normalizeYouTubeHost(url.hostname);
-	const videoId = getYouTubeVideoId(url);
-
-	if (!videoId || (host !== "youtube.com" && host !== "youtu.be")) {
-		return null;
-	}
-
-	return new URL(`https://www.youtube.com/watch?v=${videoId}`);
-}
-
-function getYouTubeVideoId(url: URL) {
-	const host = normalizeYouTubeHost(url.hostname);
-
-	if (host === "youtu.be") {
-		return getValidYouTubeId(url.pathname.split("/").filter(Boolean)[0]);
-	}
-
-	if (host !== "youtube.com") {
-		return null;
-	}
-
-	const watchVideoId = getValidYouTubeId(url.searchParams.get("v"));
-	if (watchVideoId) {
-		return watchVideoId;
-	}
-
-	const [kind, id] = url.pathname.split("/").filter(Boolean);
-	if (["shorts", "embed", "live"].includes(kind ?? "")) {
-		return getValidYouTubeId(id);
-	}
-
-	return null;
-}
-
-function normalizeYouTubeHost(hostname: string) {
-	return hostname.toLowerCase().replace(/^(www\.|m\.)/, "");
-}
-
-function getValidYouTubeId(value: string | null | undefined) {
-	if (!value) {
-		return null;
-	}
-
-	return /^[\w-]{11}$/.test(value) ? value : null;
 }
 
 async function fetchKnownProviderOembed(url: URL) {
