@@ -181,7 +181,7 @@ function LinkPreview({
 				<iframe
 					title={preview.title ?? "oEmbed preview"}
 					srcDoc={createEmbedDocument(preview.html)}
-					sandbox="allow-scripts allow-same-origin allow-popups"
+					sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
 					className="size-full border-0"
 				/>
 			</div>
