@@ -755,11 +755,6 @@ function getValidYouTubeId(value: string | null | undefined) {
 }
 
 async function fetchKnownProviderOembed(url: URL) {
-	const appleMusicMetadata = metadataFromAppleMusicUrl(url);
-	if (appleMusicMetadata) {
-		return appleMusicMetadata;
-	}
-
 	const endpoint = getKnownProviderOembedEndpoint(url);
 	if (!endpoint) {
 		return null;
@@ -797,51 +792,11 @@ function getKnownProviderOembedEndpoint(url: URL) {
 		return `https://soundcloud.com/oembed?format=json&url=${encodedUrl}`;
 	}
 
-	return null;
-}
-
-function metadataFromAppleMusicUrl(url: URL): LinkMetadata | null {
-	const host = url.hostname.toLowerCase().replace(/^(www\.|m\.)/, "");
-	if (host !== "music.apple.com") {
-		return null;
+	if (host === "music.apple.com") {
+		return `https://music.apple.com/api/oembed?url=${encodedUrl}`;
 	}
 
-	const embedUrl = new URL(url.href);
-	embedUrl.hostname = "embed.music.apple.com";
-	const height = getAppleMusicEmbedHeight(url);
-
-	return {
-		url: url.href,
-		title: null,
-		description: null,
-		siteName: "Apple Music",
-		providerName: "Apple Music",
-		authorName: null,
-		html: `<iframe allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="${height}" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-top-navigation-by-user-activation" src="${escapeHtmlAttribute(embedUrl.href)}" width="100%"></iframe>`,
-		imageUrl: null,
-		imageAlt: null,
-		metadataSource: "oembed",
-		rawMetadata: {
-			provider: "apple_music",
-			embedUrl: embedUrl.href,
-			height,
-		},
-	};
-}
-
-function getAppleMusicEmbedHeight(url: URL) {
-	const pathParts = url.pathname.split("/").filter(Boolean);
-	const kind = pathParts[1];
-
-	return kind === "song" ? 175 : 450;
-}
-
-function escapeHtmlAttribute(value: string) {
-	return value
-		.replace(/&/g, "&amp;")
-		.replace(/"/g, "&quot;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;");
+	return null;
 }
 
 function metadataFromOembed(params: {
