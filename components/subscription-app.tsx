@@ -157,6 +157,18 @@ const selectedLabelColorClassNames: Record<LabelColor, string> = {
 	slate: "border-slate-500 bg-slate-200 text-slate-950",
 };
 
+const subscriptionDialogContentClassName =
+	"flex max-h-[calc(100dvh-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-h-[min(90vh,42rem)] sm:max-w-2xl";
+
+const subscriptionDialogHeaderClassName =
+	"px-4 pt-5 pr-12 pb-3 text-left sm:px-6 sm:pt-6";
+
+const subscriptionDialogBodyClassName =
+	"min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6";
+
+const subscriptionDialogFooterClassName =
+	"border-border border-t bg-background px-4 py-3 sm:px-6 sm:py-4";
+
 const emptyForm: SubscriptionFormState = {
 	name: "",
 	amount: "",
@@ -576,23 +588,25 @@ export function SubscriptionApp({
 				open={isCreateDialogOpen}
 				onOpenChange={(open) => !open && closeCreate()}
 			>
-				<DialogContent>
-					<form onSubmit={handleCreate} className="space-y-5">
-						<DialogHeader>
+				<DialogContent className={subscriptionDialogContentClassName}>
+					<form onSubmit={handleCreate} className="flex min-h-0 flex-col">
+						<DialogHeader className={subscriptionDialogHeaderClassName}>
 							<DialogTitle>サブスクリプションを追加</DialogTitle>
 							<DialogDescription>
 								金額は JPY
 								で保存します。通貨情報は将来拡張できるように保持します。
 							</DialogDescription>
 						</DialogHeader>
-						<SubscriptionFields
-							form={form}
-							setForm={setForm}
-							labels={labels}
-							onOpenNewLabel={() => openLabelDialog("create")}
-							idPrefix="create"
-						/>
-						<DialogFooter>
+						<div className={subscriptionDialogBodyClassName}>
+							<SubscriptionFields
+								form={form}
+								setForm={setForm}
+								labels={labels}
+								onOpenNewLabel={() => openLabelDialog("create")}
+								idPrefix="create"
+							/>
+						</div>
+						<DialogFooter className={subscriptionDialogFooterClassName}>
 							<Button
 								variant="outline"
 								onClick={closeCreate}
@@ -612,21 +626,23 @@ export function SubscriptionApp({
 				open={selectedSubscription !== null}
 				onOpenChange={(open) => !open && closeEdit()}
 			>
-				<DialogContent>
-					<DialogHeader>
+				<DialogContent className={subscriptionDialogContentClassName}>
+					<DialogHeader className={subscriptionDialogHeaderClassName}>
 						<DialogTitle>サブスクリプションを編集</DialogTitle>
 						<DialogDescription>
 							次回支払い日、金額、支払い周期を更新できます。
 						</DialogDescription>
 					</DialogHeader>
-					<SubscriptionFields
-						form={draft}
-						setForm={setDraft}
-						labels={labels}
-						onOpenNewLabel={() => openLabelDialog("edit")}
-						idPrefix="edit"
-					/>
-					<DialogFooter>
+					<div className={subscriptionDialogBodyClassName}>
+						<SubscriptionFields
+							form={draft}
+							setForm={setDraft}
+							labels={labels}
+							onOpenNewLabel={() => openLabelDialog("edit")}
+							idPrefix="edit"
+						/>
+					</div>
+					<DialogFooter className={subscriptionDialogFooterClassName}>
 						<Button variant="outline" onClick={closeEdit} disabled={isSaving}>
 							キャンセル
 						</Button>
@@ -856,7 +872,7 @@ function SubscriptionFields({
 	const previewNextPaymentAt = getCalculatedNextPaymentAtFromForm(form);
 
 	return (
-		<div className="space-y-4">
+		<div className="space-y-3 sm:space-y-4">
 			<div className="grid gap-2">
 				<div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
 					<Checkbox
@@ -917,6 +933,7 @@ function SubscriptionFields({
 					<Input
 						id={`${idPrefix}-subscription-next-payment`}
 						type="date"
+						className="mobile-date-input"
 						value={form.nextPaymentDate}
 						onChange={(event) =>
 							setForm((current) => ({
