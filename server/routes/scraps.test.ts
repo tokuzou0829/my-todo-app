@@ -1,5 +1,5 @@
 import { uuidv7 } from "uuidv7";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "@/db/schema";
 import { setup } from "@/tests/vitest.helper";
@@ -11,6 +11,7 @@ const { createUser, db, mock } = await setup();
 describe("/routes/scraps", () => {
 	afterEach(() => {
 		delete process.env.IS_PUBLIC_FIRST_USER;
+		vi.unstubAllGlobals();
 	});
 
 	it("ログイン時はスクラップを検索できる", async () => {
@@ -123,6 +124,71 @@ describe("/routes/scraps", () => {
 		expect(response.status).toBe(200);
 		expect(json.scraps).toHaveLength(2);
 		expect(json.pagination.total).toBe(2);
+	});
+
+	it("YouTube oEmbed が失敗してもページ内メタデータからタイトルを取得する", async () => {
+		await createUser();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+
+				if (url.startsWith("https://www.youtube.com/oembed")) {
+					return new Response("Unauthorized", { status: 401 });
+				}
+
+				if (url === "https://www.youtube.com/watch?v=_jB9AuP7quw") {
+					return new Response(
+						`<!doctype html>
+						<html>
+							<head>
+								<script>
+									ytInitialPlayerResponse = ${JSON.stringify({
+										videoDetails: {
+											title:
+												"34. Nintendo eShop - Theme 8 | Wii U System Soundtrack",
+											shortDescription: "Wii U system music",
+											author: "Nintendo Sound Archive",
+										},
+									})};
+								</script>
+							</head>
+						</html>`,
+						{
+							headers: { "content-type": "text/html; charset=utf-8" },
+						},
+					);
+				}
+
+				return new Response("Not found", { status: 404 });
+			}),
+		);
+
+		const formData = new FormData();
+		formData.append(
+			"title",
+			"https://youtu.be/_jB9AuP7quw?list=PLAVayYtrkJqo9wFQZY5VPsPLPX27-Ausb",
+		);
+
+		const response = await app.request("/", {
+			method: "POST",
+			body: formData,
+		});
+		const json = await response.json();
+
+		expect(response.status).toBe(201);
+		expect(json.scrap).toMatchObject({
+			title: "34. Nintendo eShop - Theme 8 | Wii U System Soundtrack",
+			sourceUrl:
+				"https://youtu.be/_jB9AuP7quw?list=PLAVayYtrkJqo9wFQZY5VPsPLPX27-Ausb",
+			linkPreview: {
+				title: "34. Nintendo eShop - Theme 8 | Wii U System Soundtrack",
+				description: "Wii U system music",
+				providerName: "YouTube",
+				authorName: "Nintendo Sound Archive",
+				metadataSource: "html",
+			},
+		});
 	});
 });
 
