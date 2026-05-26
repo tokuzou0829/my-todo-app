@@ -186,6 +186,18 @@ const selectedTagColorClassNames: Record<TagColor, string> = {
 	slate: "border-slate-500 bg-slate-200 text-slate-950",
 };
 
+const entryDialogContentClassName =
+	"flex max-h-[calc(100dvh-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-h-[min(90vh,42rem)] sm:max-w-2xl";
+
+const entryDialogHeaderClassName =
+	"px-4 pt-5 pr-12 pb-3 text-left sm:px-6 sm:pt-6";
+
+const entryDialogBodyClassName =
+	"min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6";
+
+const entryDialogFooterClassName =
+	"border-border border-t bg-background px-4 py-3 sm:px-6 sm:py-4";
+
 export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const [entries, setEntries] = useState<FinanceEntry[]>([]);
 	const [tags, setTags] = useState<FinanceTag[]>([]);
@@ -869,21 +881,23 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 				open={isCreateOpen}
 				onOpenChange={(open) => !open && closeCreate()}
 			>
-				<DialogContent>
-					<form onSubmit={handleCreate} className="space-y-5">
-						<DialogHeader>
+				<DialogContent className={entryDialogContentClassName}>
+					<form onSubmit={handleCreate} className="flex min-h-0 flex-col">
+						<DialogHeader className={entryDialogHeaderClassName}>
 							<DialogTitle>家計簿項目を追加</DialogTitle>
 							<DialogDescription>
 								支払いまたは収入をタグ付きで記録します。
 							</DialogDescription>
 						</DialogHeader>
-						<EntryFields
-							form={form}
-							setForm={setForm}
-							tags={tags}
-							idPrefix="create"
-						/>
-						<DialogFooter>
+						<div className={entryDialogBodyClassName}>
+							<EntryFields
+								form={form}
+								setForm={setForm}
+								tags={tags}
+								idPrefix="create"
+							/>
+						</div>
+						<DialogFooter className={entryDialogFooterClassName}>
 							<Button
 								variant="outline"
 								onClick={closeCreate}
@@ -903,20 +917,22 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 				open={selectedEntry !== null}
 				onOpenChange={(open) => !open && closeEdit()}
 			>
-				<DialogContent>
-					<DialogHeader>
+				<DialogContent className={entryDialogContentClassName}>
+					<DialogHeader className={entryDialogHeaderClassName}>
 						<DialogTitle>家計簿項目を編集</DialogTitle>
 						<DialogDescription>
 							金額、発生日、タグ、非公開設定を更新できます。
 						</DialogDescription>
 					</DialogHeader>
-					<EntryFields
-						form={draft}
-						setForm={setDraft}
-						tags={tags}
-						idPrefix="edit"
-					/>
-					<DialogFooter>
+					<div className={entryDialogBodyClassName}>
+						<EntryFields
+							form={draft}
+							setForm={setDraft}
+							tags={tags}
+							idPrefix="edit"
+						/>
+					</div>
+					<DialogFooter className={entryDialogFooterClassName}>
 						<Button variant="outline" onClick={closeEdit} disabled={isSaving}>
 							キャンセル
 						</Button>
@@ -1201,7 +1217,7 @@ function EntryFields({
 	idPrefix: string;
 }) {
 	return (
-		<div className="space-y-4">
+		<div className="space-y-3 sm:space-y-4">
 			<div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
 				<Checkbox
 					id={`${idPrefix}-finance-private`}
@@ -1246,6 +1262,7 @@ function EntryFields({
 					<Input
 						id={`${idPrefix}-finance-date`}
 						type="date"
+						className="mobile-date-input"
 						value={form.occurredDate}
 						onChange={(event) =>
 							setForm((current) => ({

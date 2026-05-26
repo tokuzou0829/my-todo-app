@@ -67,6 +67,22 @@ body {
 	font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
+.mobile-date-input {
+	max-width: 100%;
+	min-width: 0;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.mobile-date-input::-webkit-date-and-time-value {
+	min-width: 0;
+	text-align: left;
+}
+
+.mobile-date-input::-webkit-calendar-picker-indicator {
+	margin-left: 0;
+}
+
 @media (min-width: 768px) {
 	body:has([data-sidebar-state="open"]) main {
 		padding-left: 20rem;
