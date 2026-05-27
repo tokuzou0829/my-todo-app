@@ -4,13 +4,7 @@ export type YouTubeMetadata = {
 	providerName: "YouTube";
 	authorName: string | null;
 	imageUrl: string | null;
-	rawMetadata?: Record<string, unknown>;
 };
-
-const YOUTUBE_PLAYER_API_URL =
-	"https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-const YOUTUBE_CLIENT_VERSION = "2.20240501.00.00";
-const YOUTUBE_CLIENT_NAME = "WEB";
 
 export function normalizeYouTubeUrl(url: URL) {
 	const host = normalizeYouTubeHost(url.hostname);
@@ -37,47 +31,13 @@ export function extractYouTubeMetadata(
 		return null;
 	}
 
-	return metadataFromYouTubePlayerResponse(playerResponse);
-}
-
-export async function fetchYouTubePlayerMetadata(
-	url: URL,
-	fetcher: (input: string, init?: RequestInit) => Promise<Response>,
-): Promise<YouTubeMetadata | null> {
-	const videoId = getYouTubeVideoId(url);
-	if (!videoId) {
-		return null;
-	}
-
-	try {
-		const response = await fetcher(YOUTUBE_PLAYER_API_URL, {
-			method: "POST",
-			headers: {
-				Accept: "application/json",
-				"Content-Type": "application/json",
-				"X-YouTube-Client-Name": "1",
-				"X-YouTube-Client-Version": YOUTUBE_CLIENT_VERSION,
-			},
-			body: JSON.stringify({
-				context: {
-					client: {
-						clientName: YOUTUBE_CLIENT_NAME,
-						clientVersion: YOUTUBE_CLIENT_VERSION,
-					},
-				},
-				videoId,
-			}),
-		});
-
-		if (!response.ok) {
-			return null;
-		}
-
-		const json = (await response.json().catch(() => null)) as unknown;
-		return metadataFromYouTubePlayerResponse(json, { source: "youtubei" });
-	} catch {
-		return null;
-	}
+	return {
+		title: firstString(videoDetails.title),
+		description: firstString(videoDetails.shortDescription),
+		providerName: "YouTube",
+		authorName: firstString(videoDetails.author),
+		imageUrl: getYouTubeThumbnailUrl(videoDetails.thumbnail),
+	};
 }
 
 function getYouTubeVideoId(url: URL) {
@@ -138,36 +98,6 @@ function extractYouTubePlayerResponse(html: string) {
 	}
 
 	return null;
-}
-
-function metadataFromYouTubePlayerResponse(
-	value: unknown,
-	metadata: Record<string, unknown> = {},
-): YouTubeMetadata | null {
-	const playerResponse = asRecord(value);
-	const videoDetails = asRecord(playerResponse?.videoDetails);
-	if (!videoDetails) {
-		return null;
-	}
-
-	const title = firstString(videoDetails.title);
-	if (!title) {
-		return null;
-	}
-
-	const playabilityStatus = asRecord(playerResponse?.playabilityStatus);
-	return {
-		title,
-		description: firstString(videoDetails.shortDescription),
-		providerName: "YouTube",
-		authorName: firstString(videoDetails.author),
-		imageUrl: getYouTubeThumbnailUrl(videoDetails.thumbnail),
-		rawMetadata: {
-			...metadata,
-			playabilityStatus,
-			videoDetails,
-		},
-	};
 }
 
 function extractJsonObject(value: string, startIndex: number) {

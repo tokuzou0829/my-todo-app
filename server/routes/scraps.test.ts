@@ -190,57 +190,6 @@ describe("/routes/scraps", () => {
 			},
 		});
 	});
-
-	it("YouTube ページ取得が失敗しても player API からタイトルを取得する", async () => {
-		await createUser();
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (input: RequestInfo | URL) => {
-				const url = String(input);
-
-				if (url.startsWith("https://www.youtube.com/oembed")) {
-					return new Response("Unauthorized", { status: 401 });
-				}
-
-				if (url.startsWith("https://www.youtube.com/youtubei/v1/player")) {
-					return Response.json({
-						playabilityStatus: { status: "UNPLAYABLE" },
-						videoDetails: {
-							title: "34. Nintendo eShop - Theme 8 | Wii U System Soundtrack",
-							shortDescription: "Wii U system music",
-							author: "LuisFerLCC 2",
-						},
-					});
-				}
-
-				return new Response("Forbidden", { status: 403 });
-			}),
-		);
-
-		const formData = new FormData();
-		formData.append(
-			"title",
-			"https://youtu.be/_jB9AuP7quw?list=PLAVayYtrkJqo9wFQZY5VPsPLPX27-Ausb",
-		);
-
-		const response = await app.request("/", {
-			method: "POST",
-			body: formData,
-		});
-		const json = await response.json();
-
-		expect(response.status).toBe(201);
-		expect(json.scrap).toMatchObject({
-			title: "34. Nintendo eShop - Theme 8 | Wii U System Soundtrack",
-			linkPreview: {
-				title: "34. Nintendo eShop - Theme 8 | Wii U System Soundtrack",
-				description: "Wii U system music",
-				providerName: "YouTube",
-				authorName: "LuisFerLCC 2",
-				metadataSource: "provider_api",
-			},
-		});
-	});
 });
 
 async function createScrap({
