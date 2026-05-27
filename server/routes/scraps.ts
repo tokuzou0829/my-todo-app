@@ -20,9 +20,7 @@ import {
 } from "@/server/routes/public-data-owner";
 import {
 	extractYouTubeMetadata,
-	fetchYouTubePlayerMetadata,
 	normalizeYouTubeUrl,
-	type YouTubeMetadata,
 } from "@/server/routes/scrap-youtube-metadata";
 import type { Context } from "@/server/types";
 
@@ -81,13 +79,7 @@ type LinkMetadata = {
 	html: string | null;
 	imageUrl: string | null;
 	imageAlt: string | null;
-	metadataSource:
-		| "oembed"
-		| "open_graph"
-		| "twitter_card"
-		| "html"
-		| "provider_api"
-		| "none";
+	metadataSource: "oembed" | "open_graph" | "twitter_card" | "html" | "none";
 	rawMetadata: Record<string, unknown>;
 };
 
@@ -621,18 +613,6 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 		return knownProviderMetadata;
 	}
 
-	const youtubePlayerMetadata = await fetchYouTubePlayerMetadata(
-		normalizedUrl,
-		fetchWithTimeout,
-	);
-	if (youtubePlayerMetadata) {
-		return metadataFromYouTube({
-			url: normalizedUrl.href,
-			metadata: youtubePlayerMetadata,
-			source: "provider_api",
-		});
-	}
-
 	try {
 		const htmlResponse = await fetchWithTimeout(normalizedUrl.href, {
 			headers: {
@@ -801,28 +781,6 @@ function metadataFromOembed(params: {
 			oembed: params.oembed,
 			oembedUrl: params.oembedUrl,
 			finalUrl: params.url,
-		},
-	};
-}
-
-function metadataFromYouTube(params: {
-	url: string;
-	metadata: YouTubeMetadata;
-	source: LinkMetadata["metadataSource"];
-}): LinkMetadata {
-	return {
-		url: params.url,
-		title: params.metadata.title,
-		description: params.metadata.description,
-		siteName: null,
-		providerName: params.metadata.providerName,
-		authorName: params.metadata.authorName,
-		html: null,
-		imageUrl: params.metadata.imageUrl,
-		imageAlt: params.metadata.title,
-		metadataSource: params.source,
-		rawMetadata: {
-			youtube: params.metadata.rawMetadata ?? null,
 		},
 	};
 }
