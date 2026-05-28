@@ -7,6 +7,7 @@ This guide explains how to run My Todo App in a local development environment.
 - Node.js `22.14.0` as defined in `.node-version`
 - pnpm `10.28.1` as defined in `package.json`
 - Docker for local PostgreSQL
+- A separate [`iframe_sandbox`](https://github.com/tokuzou0829/iframe_sandbox) repository for scrap oEmbed previews, if you need embedded link previews
 
 ## 1. Install Dependencies
 
@@ -27,12 +28,57 @@ Important variables:
 - `BETTER_AUTH_URL`: local app URL, usually `http://localhost:3000`.
 - `BETTER_AUTH_SECRET`: secret used by Better Auth. Generate a real value for shared or deployed environments.
 - `DATABASE_URL`: PostgreSQL connection URL.
+- `NEXT_PUBLIC_IFRAME_SANDBOX_URL`: iframe sandbox Worker URL, usually `http://localhost:8787` locally.
 - `R2_S3_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_URL`, `R2_BUCKET_NAME`: object storage settings.
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`: Web Push VAPID keys.
 
 For local UI and API development, the placeholder R2 and VAPID values from `.env.example` are enough unless you need to exercise real storage or push notification delivery.
 
-## 3. Start the Development Server
+## 3. Start the Iframe Sandbox
+
+Scrap link previews render third-party oEmbed HTML in a separate Hono/Cloudflare Workers sandbox. Clone the sandbox repository next to this app repository so it is available at `../iframe_sandbox`.
+
+From the parent directory of this repository, clone and set up the sandbox:
+
+```bash
+git clone https://github.com/tokuzou0829/iframe_sandbox.git
+cd iframe_sandbox
+pnpm i
+```
+
+Create local Worker variables:
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+For local development, `ALLOWED_ORIGINS` must include the Next.js app origin:
+
+```env
+ALLOWED_ORIGINS="http://localhost:3000"
+```
+
+Start the sandbox Worker:
+
+```bash
+pnpm dev
+```
+
+The local sandbox URL must match this app's `.env`:
+
+```env
+NEXT_PUBLIC_IFRAME_SANDBOX_URL="http://localhost:8787"
+```
+
+Do not commit production origins or secrets in `wrangler.jsonc`. For deployed Workers, upload `ALLOWED_ORIGINS` to Cloudflare with Wrangler secrets:
+
+```bash
+pnpm exec wrangler secret put ALLOWED_ORIGINS
+```
+
+Use a space-separated value for multiple parent app origins, for example `https://todo.example.com https://todo-staging.example.com`.
+
+## 4. Start the Development Server
 
 ```bash
 pnpm dev

@@ -36,6 +36,7 @@ const staticEnv = z.object({
 		.default("A simple authenticated todo app"),
 	SITE_HEADER_ICON: z.string().default(""),
 	MANIFEST_SHORT_NAME: z.string().min(1).default("Todo App"),
+	NEXT_PUBLIC_IFRAME_SANDBOX_URL: z.url().optional(),
 
 	// for server
 	DATABASE_URL: z.url(),
