@@ -8,6 +8,7 @@ import {
 	Link as LinkIcon,
 } from "lucide-react";
 import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,6 +33,8 @@ export const kindIcons = {
 	link: LinkIcon,
 	image: ImageIcon,
 } satisfies Record<ScrapKind, typeof Bookmark>;
+
+const embedMessageType = "iframe-sandbox:render";
 
 export function ScrapDetail({
 	scrap,
@@ -174,14 +177,15 @@ function LinkPreview({
 		: embedSize?.height
 			? { height: `${embedSize.height}px` }
 			: { aspectRatio: "16 / 9" };
+	const sandbox = preview.html ? getIframeSandbox() : null;
 
-	if (preview.html) {
+	if (preview.html && sandbox) {
 		return (
 			<div className="w-full overflow-hidden" style={embedStyle}>
-				<iframe
+				<SandboxedEmbed
+					html={preview.html}
 					title={preview.title ?? "oEmbed preview"}
-					srcDoc={createEmbedDocument(preview.html)}
-					sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+					sandbox={sandbox}
 					className="size-full border-0"
 				/>
 			</div>
@@ -224,6 +228,43 @@ function LinkPreview({
 	);
 }
 
+function SandboxedEmbed({
+	html,
+	title,
+	sandbox,
+	className,
+}: {
+	html: string;
+	title: string;
+	sandbox: { src: string; targetOrigin: string };
+	className?: string;
+}) {
+	const iframeRef = useRef<HTMLIFrameElement>(null);
+	const [isLoaded, setIsLoaded] = useState(false);
+
+	useEffect(() => {
+		if (!isLoaded) {
+			return;
+		}
+
+		iframeRef.current?.contentWindow?.postMessage(
+			{ type: embedMessageType, html },
+			sandbox.targetOrigin,
+		);
+	}, [html, isLoaded, sandbox.targetOrigin]);
+
+	return (
+		<iframe
+			ref={iframeRef}
+			title={title}
+			src={sandbox.src}
+			sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+			className={className}
+			onLoad={() => setIsLoaded(true)}
+		/>
+	);
+}
+
 export function formatDate(value: string) {
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) {
@@ -261,27 +302,33 @@ function getNumericHtmlAttribute(html: string, name: string) {
 	return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function createEmbedDocument(html: string) {
-	return `<!doctype html>
-<html>
-	<head>
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<style>
-			html, body { margin: 0; width: 100%; height: 100%; background: transparent; }
-			body { display: grid; place-items: center; overflow: hidden; }
-			iframe, embed, object, video { width: 100% !important; height: 100% !important; border: 0; }
-			blockquote { max-width: 100% !important; margin: 0 !important; }
-		</style>
-	</head>
-	<body>${html}</body>
-</html>`;
-}
-
 export function formatHost(value: string) {
 	try {
 		return new URL(value).host;
 	} catch {
 		return value;
+	}
+}
+
+function getIframeSandbox() {
+	const baseUrl =
+		process.env.NEXT_PUBLIC_IFRAME_SANDBOX_URL ||
+		(process.env.NODE_ENV === "development" ? "http://localhost:8787" : "");
+
+	if (!baseUrl) {
+		return null;
+	}
+
+	try {
+		const url = new URL(baseUrl);
+		url.hash = "";
+		url.search = "";
+		if (!url.pathname.endsWith("/embed")) {
+			url.pathname = `${url.pathname.replace(/\/$/, "")}/embed`;
+		}
+		return { src: url.href, targetOrigin: url.origin };
+	} catch {
+		return null;
 	}
 }
 
