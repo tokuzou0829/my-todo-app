@@ -258,6 +258,8 @@ function SandboxedEmbed({
 			ref={iframeRef}
 			title={title}
 			src={sandbox.src}
+			allow="fullscreen"
+			allowFullScreen
 			sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
 			className={className}
 			onLoad={() => setIsLoaded(true)}
