@@ -82,6 +82,7 @@ async function getReadableScrap(scrapId: string, currentUserId?: string) {
 					imageFileId: preview.imageFileId,
 					imageAlt: preview.imageAlt,
 					metadataSource: preview.metadataSource,
+					rawMetadata: preview.rawMetadata ?? null,
 					createdAt: preview.createdAt.toISOString(),
 					imageUrl: preview.imageFileId
 						? `/api/scraps/files/${preview.imageFileId}`
