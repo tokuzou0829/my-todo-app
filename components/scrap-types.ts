@@ -23,6 +23,7 @@ export type ScrapLinkPreview = {
 	imageFileId: string | null;
 	imageAlt: string | null;
 	metadataSource: string;
+	rawMetadata: Record<string, unknown> | null;
 	createdAt: string;
 	imageUrl: string | null;
 };

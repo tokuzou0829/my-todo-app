@@ -1,6 +1,6 @@
 # Developer API
 
-Developer API は、外部クライアントから本人の Todo、サブスクリプション、家計簿を読み書きするための API です。
+Developer API は、外部クライアントから本人の Todo、スクラップ、サブスクリプション、家計簿を読み書きするための API です。
 
 ## Base URL
 
@@ -44,6 +44,19 @@ X-API-Key: <API_KEY>
 | `DELETE` | `/todos/:id` | Todo を削除     |
 
 詳しくは [Todos](./todos.md) を参照してください。
+
+### Scraps
+
+| Method   | Path                | Description      |
+| -------- | ------------------- | ---------------- |
+| `GET`    | `/scraps`           | Scrap 一覧を取得 |
+| `GET`    | `/scraps/:id`       | Scrap 詳細を取得 |
+| `POST`   | `/scraps`           | Scrap を作成     |
+| `PATCH`  | `/scraps/:id`       | Scrap を更新     |
+| `DELETE` | `/scraps/:id`       | Scrap を削除     |
+| `GET`    | `/scraps/files/:id` | Scrap 画像を取得 |
+
+詳しくは [Scraps](./scraps.md) を参照してください。
 
 ### Subscriptions
 

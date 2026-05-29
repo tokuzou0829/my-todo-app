@@ -68,3 +68,9 @@ API Key のユーザーに属さないリソースは、存在していても `4
   "error": "Subscription not found"
 }
 ```
+
+```json
+{
+  "error": "Scrap not found"
+}
+```

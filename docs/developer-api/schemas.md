@@ -30,6 +30,60 @@ type Todo = {
 };
 ```
 
+## Scrap
+
+```ts
+type Scrap = {
+  id: string;
+  userId: string;
+  title: string;
+  body: string | null;
+  kind: "short_text" | "long_text" | "link" | "image";
+  sourceUrl: string | null;
+  isPrivate: boolean;
+  createdAt: string;
+  updatedAt: string;
+  linkPreview: ScrapLinkPreview | null;
+  attachments: ScrapAttachment[];
+};
+```
+
+## ScrapLinkPreview
+
+```ts
+type ScrapLinkPreview = {
+  id: string;
+  scrapId: string;
+  url: string;
+  title: string | null;
+  description: string | null;
+  siteName: string | null;
+  providerName: string | null;
+  authorName: string | null;
+  html: string | null;
+  imageFileId: string | null;
+  imageAlt: string | null;
+  metadataSource: "oembed" | "open_graph" | "twitter_card" | "html" | "none";
+  rawMetadata: Record<string, unknown> | null;
+  createdAt: string;
+  imageUrl: string | null;
+};
+```
+
+## ScrapAttachment
+
+```ts
+type ScrapAttachment = {
+  id: string;
+  scrapId: string;
+  fileId: string;
+  altText: string | null;
+  position: number;
+  createdAt: string;
+  url: string;
+};
+```
+
 ## Subscription
 
 ```ts
