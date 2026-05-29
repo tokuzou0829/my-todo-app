@@ -1,6 +1,6 @@
 "use client";
 
-import { Clipboard, Loader2, Trash2 } from "lucide-react";
+import { Clipboard, ExternalLink, Loader2, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -162,81 +162,93 @@ export function ApiKeyManager() {
 				<div className="space-y-2">
 					<h1 className="text-3xl font-semibold tracking-tight">API Key</h1>
 					<p className="max-w-2xl text-muted-foreground">
-						API Keyを発行すると、本人の Todo
-						とサブスクリプションを外部クライアントから読み書きできます。
+						API Keyを発行すると、本人の
+						Todo、スクラップ、サブスクリプション、家計簿を外部クライアントから読み書きできます。
 					</p>
 				</div>
-				<Dialog
-					open={isCreateDialogOpen}
-					onOpenChange={handleCreateDialogOpenChange}
-				>
-					<DialogTrigger asChild>
-						<Button className="shrink-0 sm:mt-1">API Keyを発行する</Button>
-					</DialogTrigger>
-					<DialogContent>
-						{createdKey ? (
-							<>
-								<DialogHeader>
-									<DialogTitle>API Keyを発行しました</DialogTitle>
-									<DialogDescription>
-										この値は再表示できません。必要な場所に保存してください。
-									</DialogDescription>
-								</DialogHeader>
-								<code className="overflow-x-auto rounded-lg border bg-muted px-3 py-2 font-mono text-xs">
-									{createdKey}
-								</code>
-								<DialogFooter>
-									<DialogClose asChild>
-										<Button variant="outline">閉じる</Button>
-									</DialogClose>
-									<Button onClick={handleCopy}>
-										<Clipboard className="size-4" />
-										{copied ? "コピー済み" : "コピー"}
-									</Button>
-								</DialogFooter>
-							</>
-						) : (
-							<>
-								<DialogHeader>
-									<DialogTitle>新しい API Key</DialogTitle>
-									<DialogDescription>
-										発行したキーは本人の Todo
-										とサブスクリプションを読み書きできます。
-									</DialogDescription>
-								</DialogHeader>
-								<form className="space-y-4" onSubmit={handleCreate}>
-									<div className="grid gap-2">
-										<Label htmlFor="api-key-name">名前</Label>
-										<Input
-											id="api-key-name"
-											value={name}
-											maxLength={80}
-											onChange={(event) => setName(event.target.value)}
-										/>
-									</div>
-									{createError ? (
-										<p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
-											{createError}
-										</p>
-									) : null}
+				<div className="flex flex-col gap-2 sm:mt-1 sm:flex-row">
+					<Button variant="outline" asChild>
+						<a
+							href="https://github.com/tokuzou0829/my-todo-app/tree/main/docs/developer-api"
+							target="_blank"
+							rel="noreferrer"
+						>
+							<ExternalLink className="size-4" />
+							ドキュメント
+						</a>
+					</Button>
+					<Dialog
+						open={isCreateDialogOpen}
+						onOpenChange={handleCreateDialogOpenChange}
+					>
+						<DialogTrigger asChild>
+							<Button>API Keyを発行する</Button>
+						</DialogTrigger>
+						<DialogContent>
+							{createdKey ? (
+								<>
+									<DialogHeader>
+										<DialogTitle>API Keyを発行しました</DialogTitle>
+										<DialogDescription>
+											この値は再表示できません。必要な場所に保存してください。
+										</DialogDescription>
+									</DialogHeader>
+									<code className="overflow-x-auto rounded-lg border bg-muted px-3 py-2 font-mono text-xs">
+										{createdKey}
+									</code>
 									<DialogFooter>
 										<DialogClose asChild>
-											<Button type="button" variant="outline">
-												キャンセル
-											</Button>
+											<Button variant="outline">閉じる</Button>
 										</DialogClose>
-										<Button type="submit" disabled={isCreating}>
-											{isCreating ? (
-												<Loader2 className="size-4 animate-spin" />
-											) : null}
-											発行する
+										<Button onClick={handleCopy}>
+											<Clipboard className="size-4" />
+											{copied ? "コピー済み" : "コピー"}
 										</Button>
 									</DialogFooter>
-								</form>
-							</>
-						)}
-					</DialogContent>
-				</Dialog>
+								</>
+							) : (
+								<>
+									<DialogHeader>
+										<DialogTitle>新しい API Key</DialogTitle>
+										<DialogDescription>
+											発行したキーは本人の
+											Todo、スクラップ、サブスクリプション、家計簿を読み書きできます。
+										</DialogDescription>
+									</DialogHeader>
+									<form className="space-y-4" onSubmit={handleCreate}>
+										<div className="grid gap-2">
+											<Label htmlFor="api-key-name">名前</Label>
+											<Input
+												id="api-key-name"
+												value={name}
+												maxLength={80}
+												onChange={(event) => setName(event.target.value)}
+											/>
+										</div>
+										{createError ? (
+											<p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
+												{createError}
+											</p>
+										) : null}
+										<DialogFooter>
+											<DialogClose asChild>
+												<Button type="button" variant="outline">
+													キャンセル
+												</Button>
+											</DialogClose>
+											<Button type="submit" disabled={isCreating}>
+												{isCreating ? (
+													<Loader2 className="size-4 animate-spin" />
+												) : null}
+												発行する
+											</Button>
+										</DialogFooter>
+									</form>
+								</>
+							)}
+						</DialogContent>
+					</Dialog>
+				</div>
 			</div>
 
 			<section className="space-y-4">

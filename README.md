@@ -11,7 +11,7 @@ You can use this app as a personal data management tool for yourself, or as a pl
 - Finance entries, tags, and analytics.
 - Scrap storage backed by R2-compatible object storage.
 - Developer API keys for external clients.
-- Developer API for todos, subscriptions, finance, and account data.
+- Developer API for todos, scraps, subscriptions, finance, and account data.
 
 ## Tech Stack
 

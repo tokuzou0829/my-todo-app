@@ -1,5 +1,5 @@
 import { uuidv7 } from "uuidv7";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as schema from "@/db/schema";
 import { setup } from "@/tests/vitest.helper";
@@ -10,6 +10,10 @@ import app from "./developer";
 const { createUser, db } = await setup();
 
 describe("/routes/developer", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it("APIキーなしでは利用できない", async () => {
 		const response = await app.request("/v1/me");
 		const json = await response.json();
@@ -85,6 +89,107 @@ describe("/routes/developer", () => {
 		});
 
 		const deleteResponse = await app.request(`/v1/todos/${todoId}`, {
+			method: "DELETE",
+			headers: { Authorization: `Bearer ${key}` },
+		});
+
+		expect(deleteResponse.status).toBe(200);
+	});
+
+	it("APIキーで本人のスクラップを画像込みでCRUDできる", async () => {
+		await createUser();
+		const key = await createApiKey();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+				if (init?.method === "PUT" || init?.method === "DELETE") {
+					return new Response(null, { status: 200 });
+				}
+
+				return new Response("image-bytes", {
+					status: 200,
+					headers: { "content-type": "image/png" },
+				});
+			}),
+		);
+		const formData = new FormData();
+		formData.append("title", "Private scrap");
+		formData.append("body", "image memo");
+		formData.append("isPrivate", "true");
+		formData.append(
+			"images",
+			new Blob(["image-bytes"], { type: "image/png" }),
+			"photo.png",
+		);
+
+		const createResponse = await app.request("/v1/scraps", {
+			method: "POST",
+			headers: { Authorization: `Bearer ${key}` },
+			body: formData,
+		});
+		const createJson = await createResponse.json();
+
+		expect(createResponse.status).toBe(201);
+		expect(createJson.scrap).toMatchObject({
+			title: "Private scrap",
+			body: "image memo",
+			kind: "image",
+			isPrivate: true,
+		});
+		expect(createJson.scrap.attachments).toHaveLength(1);
+		expect(createJson.scrap.attachments[0]).toMatchObject({
+			altText: expect.any(String),
+			url: expect.stringContaining("/api/developer/v1/scraps/files/"),
+		});
+
+		const scrapId = createJson.scrap.id as string;
+		const fileId = createJson.scrap.attachments[0].fileId as string;
+		const listResponse = await app.request("/v1/scraps?q=Private", {
+			headers: { Authorization: `Bearer ${key}` },
+		});
+		const listJson = await listResponse.json();
+
+		expect(listResponse.status).toBe(200);
+		expect(listJson.scraps).toHaveLength(1);
+		expect(listJson.scraps[0]).toMatchObject({
+			id: scrapId,
+			isPrivate: true,
+		});
+		expect(listJson.pagination.total).toBe(1);
+
+		const detailResponse = await app.request(`/v1/scraps/${scrapId}`, {
+			headers: { "X-API-Key": key },
+		});
+		const detailJson = await detailResponse.json();
+
+		expect(detailResponse.status).toBe(200);
+		expect(detailJson.scrap).toMatchObject({ id: scrapId });
+
+		const fileResponse = await app.request(`/v1/scraps/files/${fileId}`, {
+			headers: { Authorization: `Bearer ${key}` },
+		});
+
+		expect(fileResponse.status).toBe(200);
+		expect(fileResponse.headers.get("content-type")).toContain("image/png");
+
+		const updateResponse = await app.request(`/v1/scraps/${scrapId}`, {
+			method: "PATCH",
+			headers: {
+				Authorization: `Bearer ${key}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ title: "Updated scrap", body: null }),
+		});
+		const updateJson = await updateResponse.json();
+
+		expect(updateResponse.status).toBe(200);
+		expect(updateJson.scrap).toMatchObject({
+			title: "Updated scrap",
+			body: null,
+			kind: "image",
+		});
+
+		const deleteResponse = await app.request(`/v1/scraps/${scrapId}`, {
 			method: "DELETE",
 			headers: { Authorization: `Bearer ${key}` },
 		});
@@ -295,6 +400,35 @@ describe("/routes/developer", () => {
 
 		expect(response.status).toBe(404);
 		expect(json).toMatchObject({ error: "Todo not found" });
+	});
+
+	it("APIキーで他ユーザーのスクラップは操作できない", async () => {
+		await createUser();
+		const key = await createApiKey();
+		const otherScrapId = uuidv7();
+
+		await db.insert(schema.user).values({
+			id: "other_user_id",
+			name: "Other User",
+			email: "other@example.com",
+			emailVerified: true,
+		});
+		await db.insert(schema.scrap).values({
+			id: otherScrapId,
+			userId: "other_user_id",
+			title: "Other scrap",
+			body: "secret",
+			kind: "long_text",
+			isPrivate: true,
+		});
+
+		const response = await app.request(`/v1/scraps/${otherScrapId}`, {
+			headers: { Authorization: `Bearer ${key}` },
+		});
+		const json = await response.json();
+
+		expect(response.status).toBe(404);
+		expect(json).toMatchObject({ error: "Scrap not found" });
 	});
 });
 

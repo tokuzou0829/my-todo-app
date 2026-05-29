@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import * as schema from "@/db/schema";
 import { createHonoApp } from "@/server/create-app";
+import { createR2ObjectUrl } from "@/server/infrastructure/repositories/file";
 import {
 	apiKeyAuthMiddleware,
 	getApiKeyUserOrThrow,
@@ -23,6 +24,13 @@ import {
 	updateFinanceTag,
 	updateFinanceTagSchema,
 } from "@/server/routes/finance";
+import {
+	createScrapFromFormData,
+	deleteScrapWithFiles,
+	getReadableScrapFileByUserId,
+	getScrapCount,
+	getScraps,
+} from "@/server/routes/scraps";
 import {
 	createSubscriptionSchema,
 	getSubscriptionsWithLabels,
@@ -76,6 +84,35 @@ const updateTodoSchema = z
 const idSchema = z.object({
 	id: z.string().uuid(),
 });
+
+const DEVELOPER_SCRAP_FILE_BASE_PATH = "/api/developer/v1/scraps/files";
+const DEFAULT_SCRAPS_PER_PAGE = 30;
+const MAX_SCRAPS_PER_PAGE = 100;
+
+const scrapsQuerySchema = z.object({
+	page: z.coerce.number().int().min(1).default(1),
+	perPage: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(MAX_SCRAPS_PER_PAGE)
+		.default(DEFAULT_SCRAPS_PER_PAGE),
+	q: z.string().max(500).default(""),
+});
+
+const updateScrapSchema = z
+	.object({
+		title: z.string().trim().min(1).max(500).optional(),
+		body: z.string().trim().max(20_000).nullable().optional(),
+		isPrivate: z.boolean().optional(),
+	})
+	.refine(
+		(value) =>
+			value.title !== undefined ||
+			value.body !== undefined ||
+			value.isPrivate !== undefined,
+		{ message: "No changes provided" },
+	);
 
 const financeAnalyticsQuerySchema = z.object({
 	groupBy: z.enum(["week", "month", "year"]).default("month"),
@@ -165,6 +202,143 @@ const app = createHonoApp()
 		}
 
 		return c.json({ todo });
+	})
+	.get("/v1/scraps", zValidator("query", scrapsQuerySchema), async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const query = c.req.valid("query");
+		const scraps = await getScraps(c.get("db"), user.id, {
+			search: query.q,
+			limit: query.perPage,
+			offset: (query.page - 1) * query.perPage,
+			fileBasePath: DEVELOPER_SCRAP_FILE_BASE_PATH,
+		});
+		const total = await getScrapCount(c.get("db"), user.id, {
+			search: query.q,
+		});
+
+		return c.json({
+			scraps,
+			pagination: {
+				page: query.page,
+				perPage: query.perPage,
+				total,
+				pageCount: Math.ceil(total / query.perPage),
+			},
+		});
+	})
+	.get("/v1/scraps/files/:id", async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const file = await getReadableScrapFileByUserId(
+			c.get("db"),
+			c.req.param("id"),
+			user.id,
+		);
+
+		if (!file) {
+			throw new HTTPException(404, { message: "File not found" });
+		}
+
+		const { client, baseUrl } = c.get("r2");
+		const response = await client.fetch(
+			createR2ObjectUrl(baseUrl, file.bucket, file.key),
+		);
+
+		if (!response.ok || !response.body) {
+			throw new HTTPException(404, { message: "File not found" });
+		}
+
+		return new Response(response.body, {
+			status: 200,
+			headers: {
+				"Content-Type": file.contentType,
+				"Cache-Control": "public, max-age=31536000, immutable",
+			},
+		});
+	})
+	.get("/v1/scraps/:id", zValidator("param", idSchema), async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const { id } = c.req.valid("param");
+		const [scrap] = await getScraps(c.get("db"), user.id, {
+			scrapIds: [id],
+			fileBasePath: DEVELOPER_SCRAP_FILE_BASE_PATH,
+		});
+
+		if (!scrap) {
+			throw new HTTPException(404, { message: "Scrap not found" });
+		}
+
+		return c.json({ scrap });
+	})
+	.post("/v1/scraps", async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const formData = await c.req.raw.formData();
+		const scrap = await createScrapFromFormData(c, user.id, formData, {
+			fileBasePath: DEVELOPER_SCRAP_FILE_BASE_PATH,
+		});
+
+		return c.json({ scrap }, 201);
+	})
+	.patch(
+		"/v1/scraps/:id",
+		zValidator("param", idSchema),
+		zValidator("json", updateScrapSchema),
+		async (c) => {
+			const { user } = getApiKeyUserOrThrow(c);
+			const { id } = c.req.valid("param");
+			const changes = c.req.valid("json");
+			const db = c.get("db");
+			const [existingScrap] = await db
+				.select()
+				.from(schema.scrap)
+				.where(and(eq(schema.scrap.id, id), eq(schema.scrap.userId, user.id)))
+				.limit(1);
+
+			if (!existingScrap) {
+				throw new HTTPException(404, { message: "Scrap not found" });
+			}
+
+			const [attachment] = await db
+				.select({ id: schema.scrapAttachment.id })
+				.from(schema.scrapAttachment)
+				.where(eq(schema.scrapAttachment.scrapId, id))
+				.limit(1);
+			const nextBody =
+				changes.body !== undefined ? changes.body : existingScrap.body;
+			const kind = existingScrap.sourceUrl
+				? "link"
+				: attachment
+					? "image"
+					: nextBody
+						? "long_text"
+						: "short_text";
+
+			await db
+				.update(schema.scrap)
+				.set({
+					...changes,
+					kind,
+					updatedAt: new Date(),
+				})
+				.where(and(eq(schema.scrap.id, id), eq(schema.scrap.userId, user.id)));
+
+			const [scrap] = await getScraps(db, user.id, {
+				scrapIds: [id],
+				fileBasePath: DEVELOPER_SCRAP_FILE_BASE_PATH,
+			});
+
+			if (!scrap) {
+				throw new HTTPException(500, { message: "Failed to update scrap" });
+			}
+
+			return c.json({ scrap });
+		},
+	)
+	.delete("/v1/scraps/:id", zValidator("param", idSchema), async (c) => {
+		const { user } = getApiKeyUserOrThrow(c);
+		const { id } = c.req.valid("param");
+		const scrap = await deleteScrapWithFiles(c, user.id, id);
+
+		return c.json({ scrap });
 	})
 	.get("/v1/subscriptions", async (c) => {
 		const { user } = getApiKeyUserOrThrow(c);

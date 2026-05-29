@@ -44,6 +44,7 @@ const imageTypes = {
 const createScrapSchema = z.object({
 	title: z.string().trim().max(500).default(""),
 	body: z.string().trim().max(20_000).default(""),
+	sourceUrl: z.string().trim().max(2_000).default(""),
 	isPrivate: z.boolean().default(false),
 });
 
@@ -173,196 +174,19 @@ const app = createHonoApp()
 	.post("/", async (c) => {
 		const { user } = await getUserOrThrow(c);
 		const formData = await c.req.raw.formData();
-		const parsed = createScrapSchema.safeParse({
-			title: getFormString(formData, "title"),
-			body: getFormString(formData, "body"),
-			isPrivate: getFormString(formData, "isPrivate") === "true",
-		});
-
-		if (!parsed.success) {
-			throw new HTTPException(400, {
-				message: parsed.error.issues[0]?.message ?? "Invalid scrap",
-			});
-		}
-
-		const imageFiles = getImageFiles(formData);
-		if (imageFiles.length > MAX_ATTACHMENT_COUNT) {
-			throw new HTTPException(400, {
-				message: `Images must be ${MAX_ATTACHMENT_COUNT} or fewer`,
-			});
-		}
-		const imageDescriptors: ImageDescriptor[] = [];
-
-		for (const imageFile of imageFiles) {
-			const imageType = getImageType({
-				contentType: imageFile.type,
-				fileNameOrUrl: imageFile.name,
-			});
-
-			if (!imageType) {
-				throw new HTTPException(400, {
-					message:
-						"Only JPEG, PNG, WebP, GIF, AVIF, HEIC, or HEIF images are allowed",
-				});
-			}
-
-			if (imageFile.size > MAX_IMAGE_SIZE) {
-				throw new HTTPException(400, { message: "Image file is too large" });
-			}
-
-			imageDescriptors.push({
-				file: imageFile,
-				contentType: imageType,
-				keyExtension: imageTypes[imageType],
-			});
-		}
-
-		if (
-			!parsed.data.title &&
-			!parsed.data.body &&
-			imageDescriptors.length === 0
-		) {
-			throw new HTTPException(400, {
-				message: "Title, body, or image is required",
-			});
-		}
-
-		const input = parsed.data;
-		const sourceUrl = parseHttpUrl(input.title);
-		const { client, baseUrl, bucketName } = c.get("r2");
-		const fileRepository = createFileRepository(client, c.get("db"), baseUrl);
-		const metadata = sourceUrl ? await fetchLinkMetadata(sourceUrl) : null;
-		const title = chooseScrapTitle({
-			inputTitle: input.title,
-			body: input.body,
-			metadata,
-		});
-		const body = input.body || null;
-		const kind = getScrapKind({
-			sourceUrl,
-			body: input.body,
-			imageCount: imageDescriptors.length,
-		});
-		const scrapId = uuidv7();
-		const savedAttachments: Array<typeof schema.scrapAttachment.$inferInsert> =
-			[];
-
-		for (const [index, imageDescriptor] of imageDescriptors.entries()) {
-			const savedFile = await fileRepository.saveBlobFile(
-				createBlobFile({
-					blob: imageDescriptor.file,
-					bucket: bucketName,
-					keyPrefix: `${user.id}/scraps/${scrapId}/attachments`,
-					contentType: imageDescriptor.contentType,
-					keyExtension: imageDescriptor.keyExtension,
-				}),
-			);
-			savedAttachments.push({
-				id: uuidv7(),
-				scrapId,
-				fileId: savedFile.id,
-				altText: imageDescriptor.file.name || null,
-				position: index,
-			});
-		}
-
-		let previewImageFileId: string | null = null;
-		if (metadata?.imageUrl) {
-			previewImageFileId = await saveRemoteImage({
-				url: metadata.imageUrl,
-				userId: user.id,
-				scrapId,
-				bucket: bucketName,
-				saveBlobFile: fileRepository.saveBlobFile,
-			});
-		}
-
-		await c.get("db").transaction(async (tx) => {
-			await tx.insert(schema.scrap).values({
-				id: scrapId,
-				userId: user.id,
-				title,
-				body,
-				kind,
-				sourceUrl: sourceUrl?.href ?? null,
-				isPrivate: input.isPrivate,
-			});
-
-			if (metadata && sourceUrl) {
-				await tx.insert(schema.scrapLinkPreview).values({
-					id: uuidv7(),
-					scrapId,
-					url: sourceUrl.href,
-					title: metadata.title,
-					description: metadata.description,
-					siteName: metadata.siteName,
-					providerName: metadata.providerName,
-					authorName: metadata.authorName,
-					html: metadata.html,
-					imageFileId: previewImageFileId,
-					imageAlt: metadata.imageAlt,
-					metadataSource: metadata.metadataSource,
-					rawMetadata: metadata.rawMetadata,
-				});
-			}
-
-			if (savedAttachments.length) {
-				await tx.insert(schema.scrapAttachment).values(savedAttachments);
-			}
-		});
-
-		const [scrap] = await getScraps(c.get("db"), user.id, {
-			scrapIds: [scrapId],
-		});
-
-		if (!scrap) {
-			throw new HTTPException(500, { message: "Failed to create scrap" });
-		}
+		const scrap = await createScrapFromFormData(c, user.id, formData);
 
 		return c.json({ scrap }, 201);
 	})
 	.delete("/:id", async (c) => {
 		const { user } = await getUserOrThrow(c);
 		const { id } = getScrapIdOrThrow(c.req.param("id"));
-		const db = c.get("db");
-
-		const [targetScrap] = await db
-			.select()
-			.from(schema.scrap)
-			.where(and(eq(schema.scrap.id, id), eq(schema.scrap.userId, user.id)))
-			.limit(1);
-
-		if (!targetScrap) {
-			throw new HTTPException(404, { message: "Scrap not found" });
-		}
-
-		const attachments = await db
-			.select({ fileId: schema.scrapAttachment.fileId })
-			.from(schema.scrapAttachment)
-			.where(eq(schema.scrapAttachment.scrapId, id));
-		const previews = await db
-			.select({ imageFileId: schema.scrapLinkPreview.imageFileId })
-			.from(schema.scrapLinkPreview)
-			.where(eq(schema.scrapLinkPreview.scrapId, id));
-		const fileIds = [
-			...attachments.map((attachment) => attachment.fileId),
-			...previews
-				.map((preview) => preview.imageFileId)
-				.filter((fileId): fileId is string => fileId !== null),
-		];
-
-		await db.delete(schema.scrap).where(eq(schema.scrap.id, id));
-
-		const { client, baseUrl } = c.get("r2");
-		const fileRepository = createFileRepository(client, db, baseUrl);
-		await Promise.all(
-			fileIds.map((fileId) => fileRepository.deleteFileById(fileId)),
-		);
+		const targetScrap = await deleteScrapWithFiles(c, user.id, id);
 
 		return c.json({ scrap: targetScrap });
 	});
 
-async function getScraps(
+export async function getScraps(
 	db: Database,
 	userId: string,
 	options: {
@@ -371,6 +195,7 @@ async function getScraps(
 		search?: string;
 		limit?: number;
 		offset?: number;
+		fileBasePath?: string;
 	} = {},
 ) {
 	const filters = getScrapFilters(userId, options);
@@ -422,27 +247,28 @@ async function getScraps(
 
 	return scraps.map((scrap) => {
 		const preview = previewByScrapId.get(scrap.id) ?? null;
+		const fileBasePath = options.fileBasePath ?? "/api/scraps/files";
 		return {
 			...scrap,
 			linkPreview: preview
 				? {
 						...preview,
 						imageUrl: preview.imageFileId
-							? `/api/scraps/files/${preview.imageFileId}`
+							? `${fileBasePath}/${preview.imageFileId}`
 							: null,
 					}
 				: null,
 			attachments: (attachmentsByScrapId.get(scrap.id) ?? []).map(
 				(attachment) => ({
 					...attachment,
-					url: `/api/scraps/files/${attachment.fileId}`,
+					url: `${fileBasePath}/${attachment.fileId}`,
 				}),
 			),
 		};
 	});
 }
 
-async function getScrapCount(
+export async function getScrapCount(
 	db: Database,
 	userId: string,
 	options: { publicOnly?: boolean; scrapIds?: string[]; search?: string } = {},
@@ -453,6 +279,217 @@ async function getScrapCount(
 		.where(and(...getScrapFilters(userId, options)));
 
 	return row?.value ?? 0;
+}
+
+export async function createScrapFromFormData(
+	c: Context,
+	userId: string,
+	formData: FormData,
+	options: { fileBasePath?: string } = {},
+) {
+	const parsed = createScrapSchema.safeParse({
+		title: getFormString(formData, "title"),
+		body: getFormString(formData, "body"),
+		sourceUrl: getFormString(formData, "sourceUrl"),
+		isPrivate: getFormString(formData, "isPrivate") === "true",
+	});
+
+	if (!parsed.success) {
+		throw new HTTPException(400, {
+			message: parsed.error.issues[0]?.message ?? "Invalid scrap",
+		});
+	}
+
+	const imageFiles = getImageFiles(formData);
+	if (imageFiles.length > MAX_ATTACHMENT_COUNT) {
+		throw new HTTPException(400, {
+			message: `Images must be ${MAX_ATTACHMENT_COUNT} or fewer`,
+		});
+	}
+	const imageDescriptors: ImageDescriptor[] = [];
+
+	for (const imageFile of imageFiles) {
+		const imageType = getImageType({
+			contentType: imageFile.type,
+			fileNameOrUrl: imageFile.name,
+		});
+
+		if (!imageType) {
+			throw new HTTPException(400, {
+				message:
+					"Only JPEG, PNG, WebP, GIF, AVIF, HEIC, or HEIF images are allowed",
+			});
+		}
+
+		if (imageFile.size > MAX_IMAGE_SIZE) {
+			throw new HTTPException(400, { message: "Image file is too large" });
+		}
+
+		imageDescriptors.push({
+			file: imageFile,
+			contentType: imageType,
+			keyExtension: imageTypes[imageType],
+		});
+	}
+
+	const input = parsed.data;
+	const explicitSourceUrl = input.sourceUrl
+		? parseHttpUrl(input.sourceUrl)
+		: null;
+	if (input.sourceUrl && !explicitSourceUrl) {
+		throw new HTTPException(400, {
+			message: "Source URL must be an HTTP or HTTPS URL",
+		});
+	}
+	const sourceUrl = explicitSourceUrl ?? parseHttpUrl(input.title);
+
+	if (
+		!input.title &&
+		!input.body &&
+		!sourceUrl &&
+		imageDescriptors.length === 0
+	) {
+		throw new HTTPException(400, {
+			message: "Title, body, sourceUrl, or image is required",
+		});
+	}
+
+	const { client, baseUrl, bucketName } = c.get("r2");
+	const fileRepository = createFileRepository(client, c.get("db"), baseUrl);
+	const metadata = sourceUrl ? await fetchLinkMetadata(sourceUrl) : null;
+	const title = chooseScrapTitle({
+		inputTitle: input.title,
+		body: input.body,
+		metadata,
+		sourceUrl,
+	});
+	const body = input.body || null;
+	const kind = getScrapKind({
+		sourceUrl,
+		body: input.body,
+		imageCount: imageDescriptors.length,
+	});
+	const scrapId = uuidv7();
+	const savedAttachments: Array<typeof schema.scrapAttachment.$inferInsert> =
+		[];
+
+	for (const [index, imageDescriptor] of imageDescriptors.entries()) {
+		const savedFile = await fileRepository.saveBlobFile(
+			createBlobFile({
+				blob: imageDescriptor.file,
+				bucket: bucketName,
+				keyPrefix: `${userId}/scraps/${scrapId}/attachments`,
+				contentType: imageDescriptor.contentType,
+				keyExtension: imageDescriptor.keyExtension,
+			}),
+		);
+		savedAttachments.push({
+			id: uuidv7(),
+			scrapId,
+			fileId: savedFile.id,
+			altText: imageDescriptor.file.name || null,
+			position: index,
+		});
+	}
+
+	let previewImageFileId: string | null = null;
+	if (metadata?.imageUrl) {
+		previewImageFileId = await saveRemoteImage({
+			url: metadata.imageUrl,
+			userId,
+			scrapId,
+			bucket: bucketName,
+			saveBlobFile: fileRepository.saveBlobFile,
+		});
+	}
+
+	await c.get("db").transaction(async (tx) => {
+		await tx.insert(schema.scrap).values({
+			id: scrapId,
+			userId,
+			title,
+			body,
+			kind,
+			sourceUrl: sourceUrl?.href ?? null,
+			isPrivate: input.isPrivate,
+		});
+
+		if (metadata && sourceUrl) {
+			await tx.insert(schema.scrapLinkPreview).values({
+				id: uuidv7(),
+				scrapId,
+				url: sourceUrl.href,
+				title: metadata.title,
+				description: metadata.description,
+				siteName: metadata.siteName,
+				providerName: metadata.providerName,
+				authorName: metadata.authorName,
+				html: metadata.html,
+				imageFileId: previewImageFileId,
+				imageAlt: metadata.imageAlt,
+				metadataSource: metadata.metadataSource,
+				rawMetadata: metadata.rawMetadata,
+			});
+		}
+
+		if (savedAttachments.length) {
+			await tx.insert(schema.scrapAttachment).values(savedAttachments);
+		}
+	});
+
+	const [scrap] = await getScraps(c.get("db"), userId, {
+		scrapIds: [scrapId],
+		fileBasePath: options.fileBasePath,
+	});
+
+	if (!scrap) {
+		throw new HTTPException(500, { message: "Failed to create scrap" });
+	}
+
+	return scrap;
+}
+
+export async function deleteScrapWithFiles(
+	c: Context,
+	userId: string,
+	id: string,
+) {
+	const db = c.get("db");
+
+	const [targetScrap] = await db
+		.select()
+		.from(schema.scrap)
+		.where(and(eq(schema.scrap.id, id), eq(schema.scrap.userId, userId)))
+		.limit(1);
+
+	if (!targetScrap) {
+		throw new HTTPException(404, { message: "Scrap not found" });
+	}
+
+	const attachments = await db
+		.select({ fileId: schema.scrapAttachment.fileId })
+		.from(schema.scrapAttachment)
+		.where(eq(schema.scrapAttachment.scrapId, id));
+	const previews = await db
+		.select({ imageFileId: schema.scrapLinkPreview.imageFileId })
+		.from(schema.scrapLinkPreview)
+		.where(eq(schema.scrapLinkPreview.scrapId, id));
+	const fileIds = [
+		...attachments.map((attachment) => attachment.fileId),
+		...previews
+			.map((preview) => preview.imageFileId)
+			.filter((fileId): fileId is string => fileId !== null),
+	];
+
+	await db.delete(schema.scrap).where(eq(schema.scrap.id, id));
+
+	const { client, baseUrl } = c.get("r2");
+	const fileRepository = createFileRepository(client, db, baseUrl);
+	await Promise.all(
+		fileIds.map((fileId) => fileRepository.deleteFileById(fileId)),
+	);
+
+	return targetScrap;
 }
 
 function getScrapFilters(
@@ -482,9 +519,15 @@ function getScrapFilters(
 }
 
 async function getReadableScrapFile(c: Context, fileId: string) {
-	const currentUser = c.get("user");
-	const [attachmentMatch] = await c
-		.get("db")
+	return getReadableScrapFileByUserId(c.get("db"), fileId, c.get("user")?.id);
+}
+
+export async function getReadableScrapFileByUserId(
+	db: Database,
+	fileId: string,
+	currentUserId: string | undefined,
+) {
+	const [attachmentMatch] = await db
 		.select({ file: schema.files, scrap: schema.scrap })
 		.from(schema.scrapAttachment)
 		.innerJoin(schema.files, eq(schema.scrapAttachment.fileId, schema.files.id))
@@ -497,13 +540,12 @@ async function getReadableScrapFile(c: Context, fileId: string) {
 
 	if (
 		attachmentMatch &&
-		canReadScrapFile(currentUser?.id, attachmentMatch.scrap)
+		canReadScrapFile(currentUserId, attachmentMatch.scrap)
 	) {
 		return attachmentMatch.file;
 	}
 
-	const [previewMatch] = await c
-		.get("db")
+	const [previewMatch] = await db
 		.select({ file: schema.files, scrap: schema.scrap })
 		.from(schema.scrapLinkPreview)
 		.innerJoin(
@@ -517,7 +559,7 @@ async function getReadableScrapFile(c: Context, fileId: string) {
 		.where(eq(schema.scrapLinkPreview.imageFileId, fileId))
 		.limit(1);
 
-	if (previewMatch && canReadScrapFile(currentUser?.id, previewMatch.scrap)) {
+	if (previewMatch && canReadScrapFile(currentUserId, previewMatch.scrap)) {
 		return previewMatch.file;
 	}
 
@@ -563,7 +605,19 @@ function getFormString(formData: FormData, key: string) {
 function getImageFiles(formData: FormData) {
 	return formData
 		.getAll("images")
-		.filter((value): value is File => value instanceof File && value.size > 0);
+		.filter((value): value is File => isNonEmptyFile(value));
+}
+
+function isNonEmptyFile(value: FormDataEntryValue): value is File {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"name" in value &&
+		"arrayBuffer" in value &&
+		"size" in value &&
+		typeof value.size === "number" &&
+		value.size > 0
+	);
 }
 
 function getScrapKind(params: {
@@ -584,6 +638,7 @@ function chooseScrapTitle(params: {
 	inputTitle: string;
 	body: string;
 	metadata: LinkMetadata | null;
+	sourceUrl: URL | null;
 }) {
 	if (params.metadata?.title) {
 		return params.metadata.title.slice(0, 500);
@@ -591,6 +646,10 @@ function chooseScrapTitle(params: {
 
 	if (params.inputTitle) {
 		return params.inputTitle.slice(0, 500);
+	}
+
+	if (params.sourceUrl) {
+		return params.sourceUrl.href.slice(0, 500);
 	}
 
 	const bodyTitle = params.body.split("\n").find(Boolean);
