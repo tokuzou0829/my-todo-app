@@ -170,10 +170,12 @@ describe("/routes/scraps", () => {
 			"https://youtu.be/_jB9AuP7quw?list=PLAVayYtrkJqo9wFQZY5VPsPLPX27-Ausb",
 		);
 
-		const response = await app.request("/", {
-			method: "POST",
-			body: formData,
-		});
+		const response = await withMutedConsoleWarn(() =>
+			app.request("/", {
+				method: "POST",
+				body: formData,
+			}),
+		);
 		const json = await response.json();
 
 		expect(response.status).toBe(201);
@@ -190,7 +192,65 @@ describe("/routes/scraps", () => {
 			},
 		});
 	});
+
+	it("YouTube oEmbed のサムネイルより maxresdefault を先に試す", async () => {
+		await createUser();
+		const videoUrl = "https://www.youtube.com/watch?v=_jB9AuP7quw";
+		const thumbnailUrl = "https://i.ytimg.com/vi/_jB9AuP7quw/hqdefault.jpg";
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+
+			if (url.startsWith("https://www.youtube.com/oembed")) {
+				return Response.json({
+					title: "Nintendo eShop Theme",
+					provider_name: "YouTube",
+					thumbnail_url: thumbnailUrl,
+				});
+			}
+
+			if (url.startsWith("https://i.ytimg.com/vi/_jB9AuP7quw/")) {
+				return new Response("Not found", { status: 404 });
+			}
+
+			return new Response("Not found", { status: 404 });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const formData = new FormData();
+		formData.append("title", videoUrl);
+
+		const response = await withMutedConsoleWarn(() =>
+			app.request("/", {
+				method: "POST",
+				body: formData,
+			}),
+		);
+		const json = await response.json();
+
+		expect(response.status).toBe(201);
+		expect(json.scrap).toMatchObject({
+			title: "Nintendo eShop Theme",
+			linkPreview: {
+				metadataSource: "oembed",
+				providerName: "YouTube",
+			},
+		});
+		expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+			`https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`,
+			"https://i.ytimg.com/vi/_jB9AuP7quw/maxresdefault.jpg",
+			thumbnailUrl,
+		]);
+	});
 });
+
+async function withMutedConsoleWarn<T>(callback: () => Promise<T>) {
+	const warnMock = vi.spyOn(console, "warn").mockImplementation(() => {});
+	try {
+		return await callback();
+	} finally {
+		warnMock.mockRestore();
+	}
+}
 
 async function createScrap({
 	userId,

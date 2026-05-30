@@ -20,6 +20,7 @@ import {
 } from "@/server/routes/public-data-owner";
 import {
 	extractYouTubeMetadata,
+	getYouTubeMaxResThumbnailUrl,
 	normalizeYouTubeUrl,
 } from "@/server/routes/scrap-youtube-metadata";
 import type { Context } from "@/server/types";
@@ -79,6 +80,7 @@ type LinkMetadata = {
 	authorName: string | null;
 	html: string | null;
 	imageUrl: string | null;
+	imageUrls: string[];
 	imageAlt: string | null;
 	metadataSource: "oembed" | "open_graph" | "twitter_card" | "html" | "none";
 	rawMetadata: Record<string, unknown>;
@@ -393,9 +395,9 @@ export async function createScrapFromFormData(
 	}
 
 	let previewImageFileId: string | null = null;
-	if (metadata?.imageUrl) {
+	if (metadata?.imageUrls.length) {
 		previewImageFileId = await saveRemoteImage({
-			url: metadata.imageUrl,
+			urls: metadata.imageUrls,
 			userId,
 			scrapId,
 			bucket: bucketName,
@@ -728,6 +730,15 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 			twitter["twitter:image"],
 			youtube?.imageUrl,
 		);
+		const imageUrls = getResolvedImageUrls(
+			normalizedUrl,
+			getYouTubeMaxResThumbnailUrl(normalizedUrl),
+			oembed?.thumbnail_url,
+			openGraph["og:image"],
+			openGraph["og:image:url"],
+			twitter["twitter:image"],
+			youtube?.imageUrl,
+		);
 		const source = oembed?.html
 			? "oembed"
 			: openGraph["og:title"] || openGraph["og:image"]
@@ -746,7 +757,10 @@ async function fetchLinkMetadata(url: URL): Promise<LinkMetadata> {
 			providerName: firstString(oembed?.provider_name, youtube?.providerName),
 			authorName: firstString(oembed?.author_name, youtube?.authorName),
 			html: firstString(oembed?.html),
-			imageUrl: imageUrl ? resolveMaybeUrl(imageUrl, normalizedUrl) : null,
+			imageUrl:
+				imageUrls[0] ??
+				(imageUrl ? resolveMaybeUrl(imageUrl, normalizedUrl) : null),
+			imageUrls,
 			imageAlt: firstString(
 				openGraph["og:image:alt"],
 				twitter["twitter:image:alt"],
@@ -787,7 +801,7 @@ async function fetchKnownProviderOembed(url: URL) {
 	}
 
 	return metadataFromOembed({
-		url: url.href,
+		url,
 		oembed,
 		oembedUrl: endpoint,
 	});
@@ -821,25 +835,32 @@ function getKnownProviderOembedEndpoint(url: URL) {
 }
 
 function metadataFromOembed(params: {
-	url: string;
+	url: URL;
 	oembed: Record<string, unknown>;
 	oembedUrl: string;
 }): LinkMetadata {
+	const imageUrls = getResolvedImageUrls(
+		params.url,
+		getYouTubeMaxResThumbnailUrl(params.url),
+		params.oembed.thumbnail_url,
+	);
+
 	return {
-		url: params.url,
+		url: params.url.href,
 		title: firstString(params.oembed.title),
 		description: firstString(params.oembed.description),
 		siteName: null,
 		providerName: firstString(params.oembed.provider_name),
 		authorName: firstString(params.oembed.author_name),
 		html: firstString(params.oembed.html),
-		imageUrl: firstString(params.oembed.thumbnail_url),
+		imageUrl: imageUrls[0] ?? null,
+		imageUrls,
 		imageAlt: firstString(params.oembed.title),
 		metadataSource: "oembed",
 		rawMetadata: {
 			oembed: params.oembed,
 			oembedUrl: params.oembedUrl,
-			finalUrl: params.url,
+			finalUrl: params.url.href,
 		},
 	};
 }
@@ -890,21 +911,45 @@ async function readMetadataHtml(response: Response) {
 }
 
 async function saveRemoteImage(params: {
+	urls: string[];
+	userId: string;
+	scrapId: string;
+	bucket: string;
+	saveBlobFile: ReturnType<typeof createFileRepository>["saveBlobFile"];
+}) {
+	for (const [index, url] of params.urls.entries()) {
+		const savedFileId = await saveRemoteImageCandidate({
+			...params,
+			url,
+			shouldWarn: index === params.urls.length - 1,
+		});
+		if (savedFileId) {
+			return savedFileId;
+		}
+	}
+
+	return null;
+}
+
+async function saveRemoteImageCandidate(params: {
 	url: string;
 	userId: string;
 	scrapId: string;
 	bucket: string;
 	saveBlobFile: ReturnType<typeof createFileRepository>["saveBlobFile"];
+	shouldWarn: boolean;
 }) {
 	try {
 		const response = await fetchWithTimeout(params.url, {
 			headers: { Accept: "image/*" },
 		});
 		if (!response.ok) {
-			console.warn("Failed to fetch link preview image", {
-				url: params.url,
-				status: response.status,
-			});
+			if (params.shouldWarn) {
+				console.warn("Failed to fetch link preview image", {
+					url: params.url,
+					status: response.status,
+				});
+			}
 			return null;
 		}
 
@@ -914,19 +959,23 @@ async function saveRemoteImage(params: {
 		});
 
 		if (!imageType) {
-			console.warn("Unsupported link preview image type", {
-				url: params.url,
-				contentType: response.headers.get("content-type"),
-			});
+			if (params.shouldWarn) {
+				console.warn("Unsupported link preview image type", {
+					url: params.url,
+					contentType: response.headers.get("content-type"),
+				});
+			}
 			return null;
 		}
 
 		const blob = await response.blob();
 		if (blob.size > MAX_IMAGE_SIZE) {
-			console.warn("Link preview image is too large", {
-				url: params.url,
-				size: blob.size,
-			});
+			if (params.shouldWarn) {
+				console.warn("Link preview image is too large", {
+					url: params.url,
+					size: blob.size,
+				});
+			}
 			return null;
 		}
 
@@ -942,12 +991,32 @@ async function saveRemoteImage(params: {
 
 		return savedFile.id;
 	} catch (error) {
-		console.warn("Failed to save link preview image", {
-			url: params.url,
-			error: toLoggableError(error),
-		});
+		if (params.shouldWarn) {
+			console.warn("Failed to save link preview image", {
+				url: params.url,
+				error: toLoggableError(error),
+			});
+		}
 		return null;
 	}
+}
+
+function getResolvedImageUrls(baseUrl: URL, ...values: unknown[]) {
+	const urls: string[] = [];
+
+	for (const value of values) {
+		const url = firstString(value);
+		if (!url) {
+			continue;
+		}
+
+		const resolvedUrl = resolveMaybeUrl(url, baseUrl);
+		if (resolvedUrl && !urls.includes(resolvedUrl)) {
+			urls.push(resolvedUrl);
+		}
+	}
+
+	return urls;
 }
 
 function toLoggableError(error: unknown) {
@@ -1024,6 +1093,7 @@ function emptyMetadata(
 		authorName: null,
 		html: null,
 		imageUrl: null,
+		imageUrls: [],
 		imageAlt: null,
 		metadataSource: "none",
 		rawMetadata: metadata,

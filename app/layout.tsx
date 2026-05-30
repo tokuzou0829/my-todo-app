@@ -23,6 +23,7 @@ const geistMono = Geist_Mono({
 const siteSettings = getSiteSettings();
 
 export const metadata: Metadata = {
+	metadataBase: new URL(process.env.BETTER_AUTH_URL ?? "http://localhost:3000"),
 	title: siteSettings.name,
 	description: siteSettings.description,
 };

@@ -17,6 +17,11 @@ export function normalizeYouTubeUrl(url: URL) {
 	return new URL(`https://www.youtube.com/watch?v=${videoId}`);
 }
 
+export function getYouTubeMaxResThumbnailUrl(url: URL) {
+	const videoId = getYouTubeVideoId(url);
+	return videoId ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg` : null;
+}
+
 export function extractYouTubeMetadata(
 	html: string,
 	url: URL,
