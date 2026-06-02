@@ -19,9 +19,10 @@ import {
 	useState,
 } from "react";
 import {
-	Area,
 	Bar,
+	BarChart,
 	CartesianGrid,
+	Cell,
 	ComposedChart,
 	Legend,
 	Line,
@@ -64,7 +65,7 @@ type PaymentMethod =
 	| "other";
 type TagColor = "lime" | "blue" | "violet" | "rose" | "amber" | "slate";
 type GroupBy = "week" | "month" | "year";
-type TypeFilter = "all" | EntryType;
+type ViewMode = "overview" | EntryType;
 type PeriodPreset = "week" | "month" | "year" | "all";
 
 type FinanceTag = {
@@ -133,6 +134,26 @@ type ChartPoint = {
 	net: number;
 };
 
+type BreakdownPoint = {
+	name: string;
+	amount: number;
+	percent: number;
+	color: string;
+};
+
+type SummaryMetricTone =
+	| "income"
+	| "expense"
+	| "netPositive"
+	| "netNegative"
+	| "neutral";
+
+type SummaryMetric = {
+	label: string;
+	value: string;
+	tone: SummaryMetricTone;
+};
+
 const emptyForm: EntryFormState = {
 	type: "expense",
 	title: "",
@@ -168,6 +189,12 @@ const groupByOptions: Array<{ value: GroupBy; label: string }> = [
 	{ value: "year", label: "年ごと" },
 ];
 
+const viewModeOptions: Array<{ value: ViewMode; label: string }> = [
+	{ value: "overview", label: "概要" },
+	{ value: "expense", label: "支出分析" },
+	{ value: "income", label: "収入確認" },
+];
+
 const tagColorClassNames: Record<TagColor, string> = {
 	lime: "border-lime-300 bg-lime-100 text-lime-900",
 	blue: "border-blue-300 bg-blue-100 text-blue-900",
@@ -184,6 +211,16 @@ const selectedTagColorClassNames: Record<TagColor, string> = {
 	rose: "border-rose-500 bg-rose-200 text-rose-950",
 	amber: "border-amber-500 bg-amber-200 text-amber-950",
 	slate: "border-slate-500 bg-slate-200 text-slate-950",
+};
+
+const tagChartColors: Record<TagColor | "uncategorized", string> = {
+	lime: "#84cc16",
+	blue: "#38bdf8",
+	violet: "#a78bfa",
+	rose: "#fb7185",
+	amber: "#f59e0b",
+	slate: "#64748b",
+	uncategorized: "#a1a1aa",
 };
 
 const entryDialogContentClassName =
@@ -205,8 +242,8 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const [draft, setDraft] = useState<EntryFormState>(emptyForm);
 	const [selectedEntry, setSelectedEntry] = useState<FinanceEntry | null>(null);
 	const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-	const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-	const [groupBy, setGroupBy] = useState<GroupBy>("month");
+	const [viewMode, setViewMode] = useState<ViewMode>("overview");
+	const [groupBy, setGroupBy] = useState<GroupBy>("week");
 	const [displayMonth, setDisplayMonth] = useState(() =>
 		startOfMonth(new Date()),
 	);
@@ -272,24 +309,26 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 	const activePeriod = isPeriodFilterActive
 		? { from: periodFrom, to: periodTo }
 		: displayMonthRange;
-	const filteredEntries = filterEntries(
+	const periodFilteredEntries = filterEntries(
 		entries,
 		selectedTagIds,
-		typeFilter,
 		activePeriod,
 	);
-	const summary = summarizeEntries(filteredEntries);
-	const chartData = createChartData(filteredEntries, groupBy);
-	const monthlyEntryGroups = groupEntriesByMonth(filteredEntries);
+	const visibleEntries = filterEntriesByViewMode(
+		periodFilteredEntries,
+		viewMode,
+	);
+	const summaryMetrics = createSummaryMetrics(visibleEntries, viewMode);
+	const chartData = createChartData(visibleEntries, groupBy);
+	const breakdownType = viewMode === "income" ? "income" : "expense";
+	const breakdown = createTypeBreakdown(visibleEntries, breakdownType);
+	const monthlyEntryGroups = groupEntriesByMonth(visibleEntries);
 	const draftActivePeriodPreset = getActivePeriodPreset(
 		draftPeriodFrom,
 		draftPeriodTo,
 	);
 	const hasActiveFilters =
-		isPeriodFilterActive ||
-		selectedTagIds.length > 0 ||
-		typeFilter !== "all" ||
-		groupBy !== "month";
+		isPeriodFilterActive || selectedTagIds.length > 0 || groupBy !== "week";
 
 	const moveDisplayMonth = (monthDiff: number) => {
 		setDisplayMonth((current) => {
@@ -341,7 +380,7 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 		const range = getPeriodPresetRange("month");
 		setDraftPeriodFrom(range.from);
 		setDraftPeriodTo(range.to);
-		setDraftGroupBy("month");
+		setDraftGroupBy("week");
 		setDraftSelectedTagIds([]);
 		setDraftIsPeriodFilterActive(false);
 	};
@@ -601,34 +640,30 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 									<ChevronRight className="size-5" />
 								</Button>
 								<span className="text-muted-foreground text-xs">
-									{filteredEntries.length} 件
+									{visibleEntries.length} 件
 								</span>
 							</div>
 
 							<div className="w-full md:w-auto">
 								<div className="flex gap-2">
-									<div className="grid flex-1 grid-cols-3 rounded-xl border border-border p-1 md:w-64">
-										{[
-											{ value: "all", label: "すべて" },
-											{ value: "expense", label: "支出" },
-											{ value: "income", label: "収入" },
-										].map((option) => (
-											<button
-												key={option.value}
-												type="button"
-												className={cn(
-													"rounded-lg px-2 py-1.5 font-medium text-xs transition",
-													typeFilter === option.value
-														? "bg-primary/15 text-foreground"
-														: "text-muted-foreground hover:bg-muted",
-												)}
-												onClick={() =>
-													setTypeFilter(option.value as TypeFilter)
-												}
-											>
-												{option.label}
-											</button>
-										))}
+									<div className="min-w-0 flex-1 space-y-1 md:w-80 md:flex-none">
+										<div className="grid grid-cols-3 rounded-xl border border-border p-1">
+											{viewModeOptions.map((option) => (
+												<button
+													key={option.value}
+													type="button"
+													className={cn(
+														"rounded-lg px-2 py-1.5 font-medium text-xs transition sm:text-sm",
+														viewMode === option.value
+															? "bg-primary/15 text-foreground"
+															: "text-muted-foreground hover:bg-muted",
+													)}
+													onClick={() => setViewMode(option.value)}
+												>
+													{option.label}
+												</button>
+											))}
+										</div>
 									</div>
 									<Button
 										variant="outline"
@@ -647,25 +682,24 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 						</div>
 					</div>
 					<div className="grid gap-0 border-border border-t pt-5 sm:grid-cols-3 sm:divide-x sm:divide-border">
-						<FinanceSummaryMetric
-							label="収入"
-							value={formatMoney(summary.income, "JPY")}
-							tone="income"
-						/>
-						<FinanceSummaryMetric
-							label="支出"
-							value={formatMoney(summary.expense, "JPY")}
-							tone="expense"
-						/>
-						<FinanceSummaryMetric
-							label="純利益"
-							value={formatMoney(summary.net, "JPY")}
-							tone={summary.net >= 0 ? "netPositive" : "netNegative"}
-						/>
+						{summaryMetrics.map((metric) => (
+							<FinanceSummaryMetric
+								key={metric.label}
+								label={metric.label}
+								value={metric.value}
+								tone={metric.tone}
+							/>
+						))}
 					</div>
-					<div className="h-72 min-w-0 border-border border-t pt-6 sm:h-80">
-						{chartData.length ? (
-							<FinanceChart data={chartData} />
+					<div className="min-w-0 border-border border-t pt-5">
+						{chartData.length || breakdown.length ? (
+							<FinanceInsights
+								trendData={chartData}
+								breakdown={breakdown}
+								breakdownType={breakdownType}
+								groupBy={groupBy}
+								viewMode={viewMode}
+							/>
 						) : (
 							<EmptyChart />
 						)}
@@ -682,9 +716,11 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 					<p className="rounded-2xl border border-border border-dashed px-4 py-10 text-center text-muted-foreground text-sm">
 						家計簿を読み込んでいます...
 					</p>
-				) : filteredEntries.length ? (
+				) : visibleEntries.length ? (
 					<div className="space-y-3">
-						<h3 className="font-semibold text-foreground text-lg">明細</h3>
+						<h3 className="font-semibold text-foreground text-lg">
+							{entryListTitle(viewMode)}
+						</h3>
 						<div className="space-y-8">
 							{monthlyEntryGroups.map((group) => (
 								<section key={group.month} className="space-y-3">
@@ -720,7 +756,7 @@ export function FinanceApp({ isReadOnly = false }: { isReadOnly?: boolean }) {
 							条件に一致する明細はありません
 						</p>
 						<p className="mt-1 text-muted-foreground text-sm">
-							タグまたは種別フィルタを変更してください。
+							期間、タグ、または見方を変更してください。
 						</p>
 					</div>
 				) : (
@@ -1013,13 +1049,14 @@ function FinanceSummaryMetric({
 }: {
 	label: string;
 	value: string;
-	tone: "income" | "expense" | "netPositive" | "netNegative";
+	tone: SummaryMetricTone;
 }) {
 	const toneClassName = {
 		income: "text-lime-700",
 		expense: "text-rose-700",
 		netPositive: "text-foreground",
 		netNegative: "text-amber-700",
+		neutral: "text-foreground",
 	}[tone];
 
 	return (
@@ -1047,7 +1084,139 @@ function FilterLabel({ children }: { children: ReactNode }) {
 	);
 }
 
-function FinanceChart({ data }: { data: ChartPoint[] }) {
+function FinanceInsights({
+	trendData,
+	breakdown,
+	breakdownType,
+	groupBy,
+	viewMode,
+}: {
+	trendData: ChartPoint[];
+	breakdown: BreakdownPoint[];
+	breakdownType: EntryType;
+	groupBy: GroupBy;
+	viewMode: ViewMode;
+}) {
+	return (
+		<div className="grid divide-y divide-border lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.9fr)] lg:divide-x lg:divide-y-0">
+			<InsightPanel
+				className="pb-5 lg:pb-0 lg:pr-6"
+				title={`${entryTypeLabel(breakdownType)}の内訳`}
+				description={`${entryTypeLabel(breakdownType)}をタグごとの割合で確認します。`}
+			>
+				{breakdown.length ? (
+					<BreakdownChart data={breakdown} type={breakdownType} />
+				) : (
+					<InlineEmptyState
+						message={`この期間の${entryTypeLabel(breakdownType)}はありません`}
+					/>
+				)}
+			</InsightPanel>
+
+			<InsightPanel
+				className="pt-5 lg:pt-0 lg:pl-6"
+				title={trendTitle(viewMode)}
+				description={trendDescription(viewMode, groupBy)}
+			>
+				{trendData.length ? (
+					<FinanceTrendChart
+						data={trendData}
+						groupBy={groupBy}
+						viewMode={viewMode}
+					/>
+				) : (
+					<InlineEmptyState message="推移を表示できる明細がありません" />
+				)}
+			</InsightPanel>
+		</div>
+	);
+}
+
+function InsightPanel({
+	className,
+	title,
+	description,
+	children,
+}: {
+	className?: string;
+	title: string;
+	description: string;
+	children: ReactNode;
+}) {
+	return (
+		<section className={cn("min-w-0", className)}>
+			<div className="space-y-1">
+				<h3 className="font-semibold text-foreground text-sm">{title}</h3>
+				<p className="text-muted-foreground text-xs">{description}</p>
+			</div>
+			<div className="mt-3 h-64 min-w-0 sm:h-72">{children}</div>
+		</section>
+	);
+}
+
+function BreakdownChart({
+	data,
+	type,
+}: {
+	data: BreakdownPoint[];
+	type: EntryType;
+}) {
+	return (
+		<ResponsiveContainer
+			width="100%"
+			height="100%"
+			minWidth={0}
+			initialDimension={{ width: 1, height: 1 }}
+		>
+			<BarChart
+				data={data}
+				layout="vertical"
+				margin={{ top: 2, right: 8, bottom: 0, left: 0 }}
+			>
+				<CartesianGrid horizontal={false} stroke="hsl(240 5.9% 90%)" />
+				<XAxis
+					type="number"
+					tickLine={false}
+					axisLine={false}
+					fontSize={12}
+					tickFormatter={(value) => compactMoney(Number(value))}
+				/>
+				<YAxis
+					dataKey="name"
+					type="category"
+					tickLine={false}
+					axisLine={false}
+					fontSize={12}
+					width={72}
+				/>
+				<Tooltip
+					formatter={(value, name, item) => {
+						const percent = item.payload.percent as number;
+						return [
+							`${formatMoney(Number(value), "JPY")} (${formatPercent(percent)})`,
+							chartLabel(String(name)),
+						];
+					}}
+				/>
+				<Bar dataKey="amount" name={entryTypeLabel(type)} radius={[0, 8, 8, 0]}>
+					{data.map((item) => (
+						<Cell key={item.name} fill={item.color} />
+					))}
+				</Bar>
+			</BarChart>
+		</ResponsiveContainer>
+	);
+}
+
+function FinanceTrendChart({
+	data,
+	groupBy,
+	viewMode,
+}: {
+	data: ChartPoint[];
+	groupBy: GroupBy;
+	viewMode: ViewMode;
+}) {
 	return (
 		<ResponsiveContainer
 			width="100%"
@@ -1057,7 +1226,7 @@ function FinanceChart({ data }: { data: ChartPoint[] }) {
 		>
 			<ComposedChart
 				data={data}
-				margin={{ top: 10, right: 8, bottom: 0, left: 0 }}
+				margin={{ top: 2, right: 4, bottom: 0, left: 0 }}
 			>
 				<CartesianGrid strokeDasharray="3 3" stroke="hsl(240 5.9% 90%)" />
 				<XAxis
@@ -1065,6 +1234,7 @@ function FinanceChart({ data }: { data: ChartPoint[] }) {
 					tickLine={false}
 					axisLine={false}
 					fontSize={12}
+					tickFormatter={(value) => formatChartPeriod(String(value), groupBy)}
 				/>
 				<YAxis
 					tickLine={false}
@@ -1077,33 +1247,43 @@ function FinanceChart({ data }: { data: ChartPoint[] }) {
 						formatMoney(Number(value), "JPY"),
 						chartLabel(String(name)),
 					]}
-					labelFormatter={(label) => `期間: ${label}`}
+					labelFormatter={(label) => formatChartPeriod(String(label), groupBy)}
 				/>
 				<Legend formatter={(value) => chartLabel(String(value))} />
-				<Bar dataKey="expense" fill="#fb7185" radius={[6, 6, 0, 0]} />
-				<Area
-					type="monotone"
-					dataKey="income"
-					fill="#bef264"
-					fillOpacity={0.35}
-					stroke="#65a30d"
-					strokeWidth={2}
-				/>
-				<Line
-					type="monotone"
-					dataKey="net"
-					stroke="#84cc16"
-					strokeWidth={3}
-					dot={{ r: 3 }}
-				/>
+				{viewMode !== "income" ? (
+					<Bar
+						dataKey="expense"
+						name="支出"
+						fill="#fb7185"
+						radius={[6, 6, 0, 0]}
+					/>
+				) : null}
+				{viewMode !== "expense" ? (
+					<Line
+						type="monotone"
+						dataKey="income"
+						name="収入"
+						stroke="#65a30d"
+						strokeWidth={2}
+						dot={{ r: 3 }}
+					/>
+				) : null}
 			</ComposedChart>
 		</ResponsiveContainer>
 	);
 }
 
+function InlineEmptyState({ message }: { message: string }) {
+	return (
+		<div className="grid h-full place-items-center rounded-xl border border-border border-dashed text-center text-muted-foreground text-sm">
+			{message}
+		</div>
+	);
+}
+
 function EmptyChart() {
 	return (
-		<div className="grid h-full place-items-center border-border border-y border-dashed text-center">
+		<div className="grid h-64 place-items-center border-border border-y border-dashed text-center sm:h-72">
 			<div>
 				<p className="font-semibold text-foreground text-sm">
 					グラフ化できるデータがありません
@@ -1471,7 +1651,6 @@ function TagChip({ tag }: { tag: FinanceTag }) {
 function filterEntries(
 	entries: FinanceEntry[],
 	tagIds: string[],
-	typeFilter: TypeFilter,
 	period: { from: string; to: string },
 ) {
 	const selectedTagIds = new Set(tagIds);
@@ -1484,7 +1663,6 @@ function filterEntries(
 
 	return entries.filter((entry) => {
 		const occurredAt = new Date(entry.occurredAt).getTime();
-		const matchesType = typeFilter === "all" || entry.type === typeFilter;
 		const matchesTags =
 			selectedTagIds.size === 0 ||
 			entry.tags.some((tag) => selectedTagIds.has(tag.id));
@@ -1493,8 +1671,16 @@ function filterEntries(
 			occurredAt >= fromTime &&
 			occurredAt <= toTime;
 
-		return matchesType && matchesTags && matchesPeriod;
+		return matchesTags && matchesPeriod;
 	});
+}
+
+function filterEntriesByViewMode(entries: FinanceEntry[], viewMode: ViewMode) {
+	if (viewMode === "overview") {
+		return entries;
+	}
+
+	return entries.filter((entry) => entry.type === viewMode);
 }
 
 function groupEntriesByMonth(entries: FinanceEntry[]) {
@@ -1527,6 +1713,56 @@ function summarizeEntries(entries: FinanceEntry[]) {
 	return { income, expense, net: income - expense };
 }
 
+function createSummaryMetrics(
+	entries: FinanceEntry[],
+	viewMode: ViewMode,
+): SummaryMetric[] {
+	const summary = summarizeEntries(entries);
+
+	if (viewMode === "overview") {
+		return [
+			{
+				label: "収入",
+				value: formatMoney(summary.income, "JPY"),
+				tone: "income",
+			},
+			{
+				label: "支出",
+				value: formatMoney(summary.expense, "JPY"),
+				tone: "expense",
+			},
+			{
+				label: "純利益",
+				value: formatMoney(summary.net, "JPY"),
+				tone: summary.net >= 0 ? "netPositive" : "netNegative",
+			},
+		];
+	}
+
+	const total = viewMode === "income" ? summary.income : summary.expense;
+	const count = entries.length;
+	const average = count > 0 ? Math.round(total / count) : 0;
+	const label = entryTypeLabel(viewMode);
+
+	return [
+		{
+			label: `${label}合計`,
+			value: formatMoney(total, "JPY"),
+			tone: viewMode,
+		},
+		{
+			label: `${label}件数`,
+			value: `${count} 件`,
+			tone: "neutral",
+		},
+		{
+			label: `平均${label}`,
+			value: formatMoney(average, "JPY"),
+			tone: "neutral",
+		},
+	];
+}
+
 function createChartData(entries: FinanceEntry[], groupBy: GroupBy) {
 	const buckets = new Map<string, { income: number; expense: number }>();
 
@@ -1549,6 +1785,70 @@ function createChartData(entries: FinanceEntry[], groupBy: GroupBy) {
 			expense: value.expense,
 			net: value.income - value.expense,
 		}));
+}
+
+function createTypeBreakdown(entries: FinanceEntry[], type: EntryType) {
+	const matchingEntries = entries.filter((entry) => entry.type === type);
+	const totalAmount = matchingEntries.reduce(
+		(total, entry) => total + entry.amountMinor,
+		0,
+	);
+	const buckets = new Map<string, { amount: number; color: string }>();
+
+	for (const entry of matchingEntries) {
+		if (!entry.tags.length) {
+			const current = buckets.get("未分類") ?? {
+				amount: 0,
+				color: tagChartColors.uncategorized,
+			};
+			buckets.set("未分類", {
+				...current,
+				amount: current.amount + entry.amountMinor,
+			});
+			continue;
+		}
+
+		const sharedAmount = entry.amountMinor / entry.tags.length;
+		for (const tag of entry.tags) {
+			const current = buckets.get(tag.name) ?? {
+				amount: 0,
+				color: tagChartColors[tag.color],
+			};
+			buckets.set(tag.name, {
+				...current,
+				amount: current.amount + sharedAmount,
+			});
+		}
+	}
+
+	const points = Array.from(buckets.entries())
+		.map(([name, value]) => ({
+			name,
+			amount: value.amount,
+			percent: totalAmount > 0 ? value.amount / totalAmount : 0,
+			color: value.color,
+		}))
+		.sort((left, right) => right.amount - left.amount);
+
+	const visiblePoints = points.slice(0, 6);
+	const hiddenPoints = points.slice(6);
+	if (!hiddenPoints.length) {
+		return visiblePoints;
+	}
+
+	const otherAmount = hiddenPoints.reduce(
+		(total, item) => total + item.amount,
+		0,
+	);
+	return [
+		...visiblePoints,
+		{
+			name: "その他",
+			amount: otherAmount,
+			percent: totalAmount > 0 ? otherAmount / totalAmount : 0,
+			color: tagChartColors.slate,
+		},
+	];
 }
 
 function toPayload(form: EntryFormState) {
@@ -1818,6 +2118,73 @@ function compactMoney(value: number) {
 		notation: "compact",
 		maximumFractionDigits: 1,
 	}).format(value);
+}
+
+function formatPercent(value: number) {
+	return new Intl.NumberFormat("ja-JP", {
+		style: "percent",
+		maximumFractionDigits: 1,
+	}).format(value);
+}
+
+function formatChartPeriod(value: string, groupBy: GroupBy) {
+	if (groupBy === "year") {
+		return `${value}年`;
+	}
+
+	if (groupBy === "month") {
+		return formatMonthHeading(value);
+	}
+
+	return `${formatShortDate(value)}週`;
+}
+
+function groupByLabel(value: GroupBy) {
+	return (
+		groupByOptions.find((option) => option.value === value)?.label ?? "期間"
+	);
+}
+
+function entryTypeLabel(value: EntryType) {
+	return value === "income" ? "収入" : "支出";
+}
+
+function entryListTitle(viewMode: ViewMode) {
+	if (viewMode === "income") {
+		return "収入明細";
+	}
+
+	if (viewMode === "expense") {
+		return "支出明細";
+	}
+
+	return "明細";
+}
+
+function trendTitle(viewMode: ViewMode) {
+	if (viewMode === "income") {
+		return "収入の推移";
+	}
+
+	if (viewMode === "expense") {
+		return "支出の推移";
+	}
+
+	return "収支の推移";
+}
+
+function trendDescription(viewMode: ViewMode, groupBy: GroupBy) {
+	const periodLabel = groupByLabel(groupBy);
+
+	if (viewMode === "income") {
+		return `${periodLabel}の収入だけを表示します。`;
+	}
+
+	if (viewMode === "expense") {
+		return `${periodLabel}の支出だけを表示します。`;
+	}
+
+	return `${periodLabel}の支出と収入を分けて表示します。`;
 }
 
 function chartLabel(value: string) {
