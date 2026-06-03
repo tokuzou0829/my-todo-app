@@ -53,7 +53,7 @@ const staticEnv = z.object({
 
 const runtimeEnv = z.object({});
 
-export type Schema = z.infer<typeof schema>;
+export type Schema = z.input<typeof schema>;
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const schema = z.intersection(staticEnv, runtimeEnv);

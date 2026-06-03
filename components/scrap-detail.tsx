@@ -35,6 +35,7 @@ export const kindIcons = {
 } satisfies Record<ScrapKind, typeof Bookmark>;
 
 const embedMessageType = "iframe-sandbox:render";
+const tiktokPlayerFallbackHeight = 480;
 
 export function ScrapDetail({
 	scrap,
@@ -171,17 +172,24 @@ function LinkPreview({
 	preview: ScrapLinkPreview;
 	isPage?: boolean;
 }) {
-	const embedSize = preview.html ? getEmbedSize(preview.html) : null;
+	const embedSize = preview.html ? getEmbedSize(preview) : null;
 	const embedStyle = embedSize?.width
 		? { aspectRatio: `${embedSize.width} / ${embedSize.height}` }
 		: embedSize?.height
 			? { height: `${embedSize.height}px` }
 			: { aspectRatio: "16 / 9" };
 	const sandbox = preview.html ? getIframeSandbox() : null;
+	const isTikTokEmbed = preview.html ? isTikTokPlayerHtml(preview.html) : false;
 
 	if (preview.html && sandbox) {
 		return (
-			<div className="w-full overflow-hidden" style={embedStyle}>
+			<div
+				className={cn(
+					"w-full overflow-hidden",
+					isTikTokEmbed && "mx-auto max-w-70",
+				)}
+				style={embedStyle}
+			>
 				<SandboxedEmbed
 					html={preview.html}
 					title={preview.title ?? "oEmbed preview"}
@@ -281,15 +289,80 @@ export function formatDate(value: string) {
 	}).format(date);
 }
 
-function getEmbedSize(html: string) {
+function getEmbedSize(preview: ScrapLinkPreview) {
+	const html = preview.html;
+	if (!html) {
+		return null;
+	}
+
 	const width = getNumericHtmlAttribute(html, "width");
 	const height = getNumericHtmlAttribute(html, "height");
+	if (width && height) {
+		return { width, height };
+	}
+
+	if (isTikTokPlayerHtml(html)) {
+		return (
+			getTikTokMetadataEmbedSize(preview.rawMetadata) ?? {
+				width: null,
+				height: tiktokPlayerFallbackHeight,
+			}
+		);
+	}
 
 	if (!height) {
 		return null;
 	}
 
 	return { width, height };
+}
+
+function isTikTokPlayerHtml(html: string) {
+	return /https:\/\/www\.tiktok\.com\/player\/v1\/\d+/i.test(html);
+}
+
+function getTikTokMetadataEmbedSize(
+	rawMetadata: ScrapLinkPreview["rawMetadata"],
+) {
+	const metadata = asRecord(rawMetadata);
+	const oembed = asRecord(metadata?.oembed);
+	const tiktok = asRecord(metadata?.tiktok);
+	const playerSize = asRecord(tiktok?.playerSize);
+	const width = firstPositiveNumber(
+		playerSize?.width,
+		oembed?.thumbnail_width,
+		oembed?.width,
+	);
+	const height = firstPositiveNumber(
+		playerSize?.height,
+		oembed?.thumbnail_height,
+		oembed?.height,
+	);
+
+	return width && height ? { width, height } : null;
+}
+
+function asRecord(value: unknown) {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function firstPositiveNumber(...values: unknown[]) {
+	for (const value of values) {
+		const numberValue =
+			typeof value === "number"
+				? value
+				: typeof value === "string" && value.trim()
+					? Number(value)
+					: null;
+
+		if (numberValue && Number.isFinite(numberValue) && numberValue > 0) {
+			return numberValue;
+		}
+	}
+
+	return null;
 }
 
 function getNumericHtmlAttribute(html: string, name: string) {

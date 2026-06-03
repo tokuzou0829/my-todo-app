@@ -241,9 +241,76 @@ describe("/routes/scraps", () => {
 			thumbnailUrl,
 		]);
 	});
+
+	it("TikTok は oEmbed で情報を取得し Embed Player で表示する", async () => {
+		await createUser();
+		const videoUrl =
+			"https://www.tiktok.com/@scout2015/video/6718335390845095173";
+		const thumbnailUrl = "https://p16-common-sign.tiktokcdn.com/thumbnail.jpg";
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+
+			if (url.startsWith("https://www.tiktok.com/oembed")) {
+				return Response.json({
+					title: "Scramble up ur name & I'll try to guess it",
+					author_name: "Scout, Suki & Stella",
+					provider_name: "TikTok",
+					thumbnail_url: thumbnailUrl,
+					thumbnail_width: 576,
+					thumbnail_height: 1024,
+					embed_product_id: "6718335390845095173",
+					html: '<blockquote class="tiktok-embed" data-video-id="6718335390845095173"></blockquote><script async src="https://www.tiktok.com/embed.js"></script>',
+				});
+			}
+
+			if (url === thumbnailUrl) {
+				return new Response("Not found", { status: 404 });
+			}
+
+			return new Response("Not found", { status: 404 });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const formData = new FormData();
+		formData.append("title", videoUrl);
+
+		const response = await withMutedConsoleWarn(() =>
+			app.request("/", {
+				method: "POST",
+				body: formData,
+			}),
+		);
+		const json = await response.json();
+
+		expect(response.status).toBe(201);
+		expect(json.scrap).toMatchObject({
+			title: "Scramble up ur name & I'll try to guess it",
+			sourceUrl: videoUrl,
+			linkPreview: {
+				title: "Scramble up ur name & I'll try to guess it",
+				providerName: "TikTok",
+				authorName: "Scout, Suki & Stella",
+				metadataSource: "oembed",
+			},
+		});
+		expect(json.scrap.linkPreview.html).toContain(
+			"https://www.tiktok.com/player/v1/6718335390845095173?music_info=1&amp;description=1",
+		);
+		expect(json.scrap.linkPreview.html).toContain('width="576"');
+		expect(json.scrap.linkPreview.html).toContain('height="1024"');
+		expect(json.scrap.linkPreview.html).toContain(
+			'style="width:100%;height:100%"',
+		);
+		expect(json.scrap.linkPreview.html).not.toContain("tiktok-embed");
+		expect(json.scrap.linkPreview.html).not.toContain("embed.js");
+		expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+			`https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`,
+			thumbnailUrl,
+		]);
+	});
 });
 
-async function withMutedConsoleWarn<T>(callback: () => Promise<T>) {
+async function withMutedConsoleWarn<T>(callback: () => T | Promise<T>) {
 	const warnMock = vi.spyOn(console, "warn").mockImplementation(() => {});
 	try {
 		return await callback();
