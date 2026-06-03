@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 
 import { PageTransition } from "@/components/page-transition";
 import { SiteHeader } from "@/components/site-header";
@@ -21,6 +22,55 @@ const geistMono = Geist_Mono({
 });
 
 const siteSettings = getSiteSettings();
+const performanceMeasureGuardScript = `
+(() => {
+	const originalMeasure = performance.measure?.bind(performance);
+	if (!originalMeasure || performance.measure.__negativeTimestampGuard) {
+		return;
+	}
+
+	function sanitizeMeasureOptions(value) {
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			return value;
+		}
+
+		const options = { ...value };
+		if (typeof options.start === "number" && options.start < 0) {
+			options.start = 0;
+		}
+		if (typeof options.end === "number" && options.end < 0) {
+			options.end = 0;
+		}
+		if (
+			typeof options.start === "number" &&
+			typeof options.end === "number" &&
+			options.end < options.start
+		) {
+			options.end = options.start;
+		}
+		return options;
+	}
+
+	function guardedMeasure(name, startOrOptions, endMark) {
+		try {
+			return originalMeasure(name, startOrOptions, endMark);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "";
+			const isReactComponentMeasure =
+				typeof name === "string" && name.charCodeAt(0) === 8203;
+			if (!isReactComponentMeasure || !message.includes("negative time stamp")) {
+				throw error;
+			}
+
+			return originalMeasure(name, sanitizeMeasureOptions(startOrOptions), endMark);
+		}
+	}
+
+	Object.defineProperty(guardedMeasure, "__negativeTimestampGuard", {
+		value: true,
+	});
+	performance.measure = guardedMeasure;
+})();`;
 
 export const metadata: Metadata = {
 	metadataBase: new URL(process.env.BETTER_AUTH_URL ?? "http://localhost:3000"),
@@ -40,6 +90,11 @@ export default function RootLayout({
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
 			>
+				{process.env.NODE_ENV === "development" ? (
+					<Script id="performance-measure-guard" strategy="beforeInteractive">
+						{performanceMeasureGuardScript}
+					</Script>
+				) : null}
 				<SiteHeader
 					siteName={siteSettings.name}
 					siteHeaderIcon={siteSettings.headerIcon}

@@ -31,6 +31,8 @@ const FETCH_TIMEOUT_MS = 7_000;
 const MAX_HTML_METADATA_BYTES = 3_000_000;
 const DEFAULT_SCRAPS_PER_PAGE = 30;
 const MAX_SCRAPS_PER_PAGE = 100;
+const TIKTOK_PLAYER_FALLBACK_WIDTH = 270;
+const TIKTOK_PLAYER_FALLBACK_HEIGHT = 480;
 
 const imageTypes = {
 	"image/jpeg": ".jpg",
@@ -800,6 +802,14 @@ async function fetchKnownProviderOembed(url: URL) {
 		return null;
 	}
 
+	if (isTikTokUrl(url)) {
+		return metadataFromTikTokOembed({
+			url,
+			oembed,
+			oembedUrl: endpoint,
+		});
+	}
+
 	return metadataFromOembed({
 		url,
 		oembed,
@@ -831,7 +841,64 @@ function getKnownProviderOembedEndpoint(url: URL) {
 		return `https://music.apple.com/api/oembed?url=${encodedUrl}`;
 	}
 
+	if (isTikTokUrl(url)) {
+		return `https://www.tiktok.com/oembed?url=${encodedUrl}`;
+	}
+
 	return null;
+}
+
+function metadataFromTikTokOembed(params: {
+	url: URL;
+	oembed: Record<string, unknown>;
+	oembedUrl: string;
+}): LinkMetadata {
+	const title = firstString(params.oembed.title);
+	const postId = getTikTokPostId(params.url, params.oembed);
+	const playerUrl = postId ? createTikTokPlayerUrl(postId) : null;
+	const playerSize = getTikTokPlayerSize(params.oembed);
+	const imageUrls = getResolvedImageUrls(
+		params.url,
+		params.oembed.thumbnail_url,
+	);
+
+	return {
+		url: params.url.href,
+		title,
+		description: firstString(params.oembed.description),
+		siteName: null,
+		providerName: firstString(params.oembed.provider_name),
+		authorName: firstString(params.oembed.author_name),
+		html: playerUrl
+			? createTikTokPlayerHtml({
+					url: playerUrl,
+					title: title ?? "TikTok post",
+					width: playerSize.width,
+					height: playerSize.height,
+				})
+			: null,
+		imageUrl: imageUrls[0] ?? null,
+		imageUrls,
+		imageAlt: title,
+		metadataSource: "oembed",
+		rawMetadata: {
+			oembed: params.oembed,
+			oembedUrl: params.oembedUrl,
+			tiktok: { postId, playerUrl, playerSize },
+			finalUrl: params.url.href,
+		},
+	};
+}
+
+function getTikTokPlayerSize(oembed: Record<string, unknown>) {
+	return {
+		width:
+			firstPositiveNumber(oembed.thumbnail_width, oembed.width) ??
+			TIKTOK_PLAYER_FALLBACK_WIDTH,
+		height:
+			firstPositiveNumber(oembed.thumbnail_height, oembed.height) ??
+			TIKTOK_PLAYER_FALLBACK_HEIGHT,
+	};
 }
 
 function metadataFromOembed(params: {
@@ -881,6 +948,43 @@ async function fetchOembed(url: string) {
 	} catch {
 		return null;
 	}
+}
+
+function isTikTokUrl(url: URL) {
+	const host = url.hostname.toLowerCase();
+	return host === "tiktok.com" || host.endsWith(".tiktok.com");
+}
+
+function getTikTokPostId(url: URL, oembed: Record<string, unknown>) {
+	return firstString(
+		oembed.embed_product_id,
+		extractTikTokPostIdFromHtml(firstString(oembed.html)),
+		extractTikTokPostIdFromUrl(url),
+	);
+}
+
+function extractTikTokPostIdFromHtml(html: string | null) {
+	return html?.match(/\sdata-video-id=["'](\d+)["']/i)?.[1] ?? null;
+}
+
+function extractTikTokPostIdFromUrl(url: URL) {
+	return url.pathname.match(/\/(?:video|photo|player\/v1)\/(\d+)/)?.[1] ?? null;
+}
+
+function createTikTokPlayerUrl(postId: string) {
+	const url = new URL(`https://www.tiktok.com/player/v1/${postId}`);
+	url.searchParams.set("music_info", "1");
+	url.searchParams.set("description", "1");
+	return url.href;
+}
+
+function createTikTokPlayerHtml(params: {
+	url: string;
+	title: string;
+	width: number;
+	height: number;
+}) {
+	return `<iframe src="${escapeHtmlAttribute(params.url)}" width="${params.width}" height="${params.height}" style="width:100%;height:100%" allow="fullscreen" allowfullscreen title="${escapeHtmlAttribute(params.title)}"></iframe>`;
 }
 
 async function readMetadataHtml(response: Response) {
@@ -1188,6 +1292,14 @@ function decodeHtml(value: string) {
 		.trim();
 }
 
+function escapeHtmlAttribute(value: string) {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;");
+}
+
 function resolveMaybeUrl(value: string, baseUrl: URL) {
 	try {
 		return new URL(value, baseUrl).href;
@@ -1200,6 +1312,23 @@ function firstString(...values: unknown[]) {
 	for (const value of values) {
 		if (typeof value === "string" && value.trim()) {
 			return value.trim();
+		}
+	}
+
+	return null;
+}
+
+function firstPositiveNumber(...values: unknown[]) {
+	for (const value of values) {
+		const numberValue =
+			typeof value === "number"
+				? value
+				: typeof value === "string" && value.trim()
+					? Number(value)
+					: null;
+
+		if (numberValue && Number.isFinite(numberValue) && numberValue > 0) {
+			return numberValue;
 		}
 	}
 
